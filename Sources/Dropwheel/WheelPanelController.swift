@@ -20,10 +20,10 @@ final class WheelPanelController {
     /// always re-centres the wheel, even if the last one is still fading out.
     private var isInDragSession = false
 
-    func show(_ kind: WheelKind, keySymbol: String, items: [WheelItem]) {
+    func show(_ kind: WheelKind, keySymbol: String, items: [WheelItem], emptyMessage: String) {
         pendingHide?.cancel()
         pendingHide = nil
-        wheelView.configure(kind: kind, keySymbol: keySymbol, items: items)
+        wheelView.configure(kind: kind, keySymbol: keySymbol, items: items, emptyMessage: emptyMessage)
         guard !isInDragSession else { return }
         isInDragSession = true
 

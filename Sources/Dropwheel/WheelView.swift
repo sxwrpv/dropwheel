@@ -16,6 +16,7 @@ final class WheelView: NSView {
     private(set) var kind: WheelKind = .actions
     private var keySymbol = ""
     private var items: [WheelItem] = []
+    private var emptyMessage = ""
     private var hoveredIndex: Int? {
         didSet { if hoveredIndex != oldValue { needsDisplay = true } }
     }
@@ -32,10 +33,12 @@ final class WheelView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func configure(kind: WheelKind, keySymbol: String, items: [WheelItem]) {
+    /// `emptyMessage` fills the hub when the wheel has no slices.
+    func configure(kind: WheelKind, keySymbol: String, items: [WheelItem], emptyMessage: String) {
         self.kind = kind
         self.keySymbol = keySymbol
         self.items = items
+        self.emptyMessage = emptyMessage
         hoveredIndex = nil
         needsDisplay = true
     }
@@ -101,7 +104,7 @@ final class WheelView: NSView {
         let heading = "\(keySymbol)  \(kind.title)"
         let detail: String
         if items.isEmpty {
-            detail = "Coming soon"
+            detail = emptyMessage
         } else if let hoveredIndex {
             detail = items[hoveredIndex].title
         } else {
@@ -121,8 +124,10 @@ final class WheelView: NSView {
             .paragraphStyle: paragraph,
         ])
         let width = Self.hubRadius * 2 - 16
+        // Text is laid out from the top of each rect: the heading sits just
+        // above the centre line and the detail (up to two lines) just below.
         headingText.draw(in: NSRect(x: center.x - width / 2, y: center.y + 4, width: width, height: 14))
-        detailText.draw(in: NSRect(x: center.x - width / 2, y: center.y - 20, width: width, height: 34))
+        detailText.draw(in: NSRect(x: center.x - width / 2, y: center.y - 34, width: width, height: 34))
     }
 
     private func symbolImage(_ name: String, tint: NSColor) -> NSImage? {

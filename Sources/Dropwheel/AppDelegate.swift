@@ -1,14 +1,19 @@
 import AppKit
 import DropwheelCore
+import DropwheelEngines
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private let shelf = FloatShelf()
     private let wheel = WheelPanelController()
+    private let jobs = JobCenter()
+    private lazy var jobPanel = JobPanel(center: jobs)
     private lazy var dragMonitor = DragMonitor(bindings: preferences.keyBindings)
     private lazy var actions = FileActionPerformer(shelf: shelf, preferences: preferences)
     private var statusItem: NSStatusItem?
+    /// What is being dragged, read once when the first wheel of a drag opens.
+    private var dragSelection: [SelectionItem]?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = makeStatusItem()
@@ -20,22 +25,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.handle(event)
         }
         dragMonitor.start()
+        _ = jobPanel
         showPreviewWheelIfRequested()
     }
 
     /// Development aid: `DROPWHEEL_PREVIEW_WHEEL=actions` opens that wheel at
     /// launch, so drops can be tested without holding a key mid-drag.
+    /// `DROPWHEEL_PREVIEW_FILES=/a.png:/b.heic` stands in for the dragged files,
+    /// and `DROPWHEEL_PREVIEW_CONVERT=jpg` queues them as if dropped on that slice.
     private func showPreviewWheelIfRequested() {
-        guard let raw = ProcessInfo.processInfo.environment["DROPWHEEL_PREVIEW_WHEEL"],
-              let kind = WheelKind(rawValue: raw) else { return }
-        handle(.showWheel(kind))
+        let environment = ProcessInfo.processInfo.environment
+        let files = (environment["DROPWHEEL_PREVIEW_FILES"] ?? "")
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)) }
+        if let raw = environment["DROPWHEEL_PREVIEW_WHEEL"], let kind = WheelKind(rawValue: raw) {
+            if !files.isEmpty { dragSelection = files.map(ConversionService.selectionItem) }
+            handle(.showWheel(kind))
+        }
+        if let raw = environment["DROPWHEEL_PREVIEW_CONVERT"], let format = FileFormat(rawValue: raw), !files.isEmpty {
+            handleDrop(WheelItem.conversion(to: format), urls: files)
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard actions.isBusy else { return .terminateNow }
+        guard actions.isBusy || jobs.isBusy else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "Dropwheel is still moving files"
-        alert.informativeText = "Quitting now can leave a partial copy at the destination."
+        alert.messageText = actions.isBusy ? "Dropwheel is still moving files" : "Dropwheel is still converting files"
+        alert.informativeText = actions.isBusy
+            ? "Quitting now can leave a partial copy at the destination."
+            : "Quitting now stops the conversions that haven’t finished."
         alert.addButton(withTitle: "Keep Running")
         alert.addButton(withTitle: "Quit Anyway")
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
@@ -43,15 +61,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         dragMonitor.stop()
+        // Child processes outlive the app, so stop them and remove their
+        // half-written files rather than leaving ffmpeg running.
+        jobs.cancelAll()
+        ProcessRunner.terminateAll()
+        ConversionService.discardWorkInProgress()
     }
 
     private func handle(_ event: DragSessionEvent) {
         switch event {
         case .showWheel(let kind):
+            let selection = currentDragSelection()
             let key = preferences.keyBindings.key(for: kind)
-            wheel.show(kind, keySymbol: key.symbol, items: WheelCatalog.items(for: kind))
+            wheel.show(kind, keySymbol: key.symbol,
+                       items: WheelCatalog.items(for: kind, selection: selection, capabilities: .system),
+                       emptyMessage: Self.emptyMessage(for: kind))
         case .dragEnded:
+            dragSelection = nil
             wheel.hideSoon()
+        }
+    }
+
+    /// Reads the dragged files once per drag. An empty read isn't cached, in
+    /// case the drag pasteboard was still being filled.
+    private func currentDragSelection() -> [SelectionItem] {
+        if let dragSelection { return dragSelection }
+        let selection = dragMonitor.draggedFileURLs().map(ConversionService.selectionItem)
+        if !selection.isEmpty { dragSelection = selection }
+        return selection
+    }
+
+    private static func emptyMessage(for kind: WheelKind) -> String {
+        switch kind {
+        case .conversions: "No shared formats"
+        case .tools: "Coming soon"
+        case .actions: ""
         }
     }
 
@@ -59,6 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch item.action {
         case .fileAction(let kind):
             actions.perform(kind, on: urls)
+        case .convert(let format):
+            jobs.convert(urls, to: format)
         }
     }
 

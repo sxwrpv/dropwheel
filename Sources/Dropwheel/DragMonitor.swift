@@ -41,6 +41,14 @@ final class DragMonitor {
         stopPolling()
     }
 
+    /// File URLs carried by the drag in progress, as path URLs (some apps
+    /// put file-reference URLs such as file:///.file/id=… on the pasteboard).
+    func draggedFileURLs() -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let objects = dragPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [NSURL] ?? []
+        return objects.compactMap(\.filePathURL)
+    }
+
     private func beginPolling() {
         guard pollTimer == nil else { return }
         tick()

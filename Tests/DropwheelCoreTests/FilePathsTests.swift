@@ -69,6 +69,19 @@ struct FilePathsTests {
         #expect(FilePaths.isSameOrInside(URL(fileURLWithPath: "/tmp/photos/2026"), ancestor))
     }
 
+    @Test("Conversion wheel lists the selection's shared targets")
+    func conversionCatalog() {
+        let items = WheelCatalog.items(for: .conversions, selection: [.input(.heic), .input(.png)])
+        #expect(items.map(\.label) == ["JPG", "WEBP", "TIFF", "AVIF", "BMP", "PDF"])
+        #expect(items.first?.title == "Convert to JPG")
+        #expect(items.first?.action == .convert(.jpg))
+    }
+
+    @Test("Conversion wheel is empty when nothing is shared")
+    func emptyConversionCatalog() {
+        #expect(WheelCatalog.items(for: .conversions, selection: [.unknown]).isEmpty)
+    }
+
     @Test("Action wheel lists all six actions in order")
     func actionCatalog() {
         let titles = WheelCatalog.items(for: .actions).map(\.title)
