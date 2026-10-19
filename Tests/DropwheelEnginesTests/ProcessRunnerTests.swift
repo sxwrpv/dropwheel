@@ -34,6 +34,29 @@ struct ProcessRunnerTests {
         #expect(ContinuousClock.now - started < .seconds(2))
     }
 
+    @Test("A tool that runs past its time limit is stopped and reported")
+    func timeout() async {
+        let started = ContinuousClock.now
+        await #expect(throws: ConversionError.toolFailed(tool: "sh", message: "It didn’t finish within 0 minutes.")) {
+            try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep 5"], timeout: .milliseconds(300))
+        }
+        #expect(ContinuousClock.now - started < .seconds(2))
+    }
+
+    @Test("A task cancelled while waiting at the gate leaves promptly")
+    func gateCancellation() async throws {
+        let gate = SerialGate()
+        try await gate.acquire()
+        let waiter = Task { try await gate.acquire() }
+        try await Task.sleep(for: .milliseconds(100))
+        waiter.cancel()
+        await #expect(throws: ConversionError.cancelled) { try await waiter.value }
+        await gate.release()
+        // The gate is free again for the next caller.
+        try await gate.acquire()
+        await gate.release()
+    }
+
     // Uses its own tag: tests run in parallel, and stopping every process
     // would also stop other tests' tools.
     @Test("terminateAll stops the running tools it is given")

@@ -26,5 +26,7 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Dropwheel asks Pages to open and save documents when you convert to or from the Pages format.</string>
 </dict>
 </plist>

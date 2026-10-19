@@ -1,36 +1,47 @@
-/// Broad groups of formats. Conversions stay within a family, except video to MP3.
+/// Broad groups of formats. Each family has its own conversion engine.
 public enum FormatFamily: String, Sendable {
     case image
+    case pdf
     case audio
     case video
     case subtitle
-    case archive
-    case text
     case document
+    case slides
+    case spreadsheet
+    case archive
 }
 
 /// Every format Dropwheel reads or writes. Case order is the order slices
 /// appear on the wheel.
 public enum FileFormat: String, CaseIterable, Sendable {
     // Images
-    case png, jpg, webp, heic, tiff, avif, bmp, svg, pdf
+    case png, jpg, webp, heic, tiff, avif, bmp, svg
+    case pdf
     // Audio
     case mp3, m4a, wav, flac, ogg, opus, aiff, wma
     // Video
     case mp4, mov, mkv, webm, avi, wmv, gif
-    // Subtitles and text
-    case srt, vtt, txt
+    // Subtitles
+    case srt, vtt
+    // Documents
+    case docx, pages, md, txt, epub, html, rtf, rtfd, textClipping
+    // Slides
+    case pptx, ppt
+    // Spreadsheets
+    case xlsx, ods, csv, tsv, xls
     // Archives
     case zip, tar, gzip, rar
 
     public var family: FormatFamily {
         switch self {
         case .png, .jpg, .webp, .heic, .tiff, .avif, .bmp, .svg: .image
-        case .pdf: .document
+        case .pdf: .pdf
         case .mp3, .m4a, .wav, .flac, .ogg, .opus, .aiff, .wma: .audio
         case .mp4, .mov, .mkv, .webm, .avi, .wmv, .gif: .video
         case .srt, .vtt: .subtitle
-        case .txt: .text
+        case .docx, .pages, .md, .txt, .epub, .html, .rtf, .rtfd, .textClipping: .document
+        case .pptx, .ppt: .slides
+        case .xlsx, .ods, .csv, .tsv, .xls: .spreadsheet
         case .zip, .tar, .gzip, .rar: .archive
         }
     }
@@ -43,6 +54,10 @@ public enum FileFormat: String, CaseIterable, Sendable {
         case .heic: ["heic", "heif"]
         case .aiff: ["aiff", "aif"]
         case .vtt: ["vtt", "webvtt"]
+        case .md: ["md", "markdown"]
+        case .txt: ["txt", "text"]
+        case .html: ["html", "htm"]
+        case .textClipping: ["textclipping"]
         case .gzip: ["tar.gz", "tgz", "gz"]
         default: [rawValue]
         }
@@ -50,10 +65,16 @@ public enum FileFormat: String, CaseIterable, Sendable {
 
     public var preferredExtension: String { extensions[0] }
 
+    /// Formats stored as folders (packages) rather than single files.
+    public var isPackage: Bool {
+        self == .rtfd || self == .pages
+    }
+
     /// Short uppercase name, as drawn on a wheel slice.
     public var label: String {
         switch self {
         case .gzip: "GZIP"
+        case .textClipping: "CLIPPING"
         default: rawValue.uppercased()
         }
     }
@@ -62,11 +83,13 @@ public enum FileFormat: String, CaseIterable, Sendable {
     public var symbolName: String {
         switch family {
         case .image: "photo"
+        case .pdf: "doc.richtext"
         case .audio: "waveform"
         case .video: self == .gif ? "photo.stack" : "film"
         case .subtitle: "captions.bubble"
-        case .text: "text.alignleft"
-        case .document: "doc.richtext"
+        case .document: self == .txt ? "text.alignleft" : "doc.text"
+        case .slides: "rectangle.on.rectangle"
+        case .spreadsheet: "tablecells"
         case .archive: "archivebox"
         }
     }

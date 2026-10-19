@@ -27,12 +27,8 @@ struct ArchiveConverter: Converter {
 
     /// Extracts into a scratch folder, then packs what came out.
     private func repack(_ archive: URL, as source: FileFormat, to target: FileFormat, output: URL) async throws(ConversionError) {
-        let scratch = try Self.makeScratchDirectory(near: output)
-        WorkInProgress.shared.add(scratch)
-        defer {
-            try? FileManager.default.removeItem(at: scratch)
-            WorkInProgress.shared.remove(scratch)
-        }
+        let scratch = try ScratchSpace.make(near: output)
+        defer { ScratchSpace.discard(scratch) }
 
         try await extract(archive, as: source, into: scratch)
         Self.removeMetadata(in: scratch)
@@ -75,17 +71,6 @@ struct ArchiveConverter: Converter {
             try await ProcessRunner.run(Self.tar, arguments: [create, output.path, "-s", Self.stripDotSlash, "-C", base.path] + safeNames)
         default:
             throw .unsupported(input: names.joined(separator: ", "), target: target)
-        }
-    }
-
-    /// A scratch folder on the same volume as the output, so large archives
-    /// don't fill the startup disk.
-    private static func makeScratchDirectory(near output: URL) throws(ConversionError) -> URL {
-        do {
-            return try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask,
-                                               appropriateFor: output, create: true)
-        } catch {
-            throw .writeFailed(error.localizedDescription)
         }
     }
 

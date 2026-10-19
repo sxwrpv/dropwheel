@@ -25,14 +25,17 @@ public enum ProcessRunner {
         RunningProcesses.shared.all().filter { $0.tag == tag }.forEach { $0.terminate() }
     }
 
+    /// `timeout` stops a tool that hangs, for example on a dialog it can't
+    /// show, so it can't hold up the conversions queued behind it.
     static func run(
         _ executable: URL,
         arguments: [String],
         standardOutputFile: URL? = nil,
         tag: String = standardTag,
+        timeout: Duration? = nil,
         onLine: (@Sendable (String) -> Void)? = nil
     ) async throws(ConversionError) {
-        let process = RunningProcess(executable: executable, arguments: arguments, tag: tag,
+        let process = RunningProcess(executable: executable, arguments: arguments, tag: tag, timeout: timeout,
                                      standardOutputFile: standardOutputFile, onLine: onLine)
         do {
             try await withTaskCancellationHandler {
@@ -75,6 +78,7 @@ private final class RunningProcess: @unchecked Sendable {
     let tag: String
     private let process = Process()
     private let toolName: String
+    private let timeout: Duration?
     private let standardOutputFile: URL?
     private let onLine: (@Sendable (String) -> Void)?
     private let lock = NSLock()
@@ -82,11 +86,14 @@ private final class RunningProcess: @unchecked Sendable {
     private var stderrTail = Data()
     private var wasCancelled = false
     private var hasLaunched = false
+    private var hasTimedOut = false
 
-    init(executable: URL, arguments: [String], tag: String, standardOutputFile: URL?, onLine: (@Sendable (String) -> Void)?) {
+    init(executable: URL, arguments: [String], tag: String, timeout: Duration?,
+         standardOutputFile: URL?, onLine: (@Sendable (String) -> Void)?) {
         process.executableURL = executable
         process.arguments = arguments
         self.tag = tag
+        self.timeout = timeout
         toolName = executable.lastPathComponent
         self.standardOutputFile = standardOutputFile
         self.onLine = onLine
@@ -96,6 +103,15 @@ private final class RunningProcess: @unchecked Sendable {
     func terminate() {
         let launched = lock.withLock {
             wasCancelled = true
+            return hasLaunched
+        }
+        if launched { process.terminate() }
+    }
+
+    /// Called by the watchdog when the time limit passes.
+    private func expire() {
+        let launched = lock.withLock {
+            hasTimedOut = true
             return hasLaunched
         }
         if launched { process.terminate() }
@@ -115,6 +131,14 @@ private final class RunningProcess: @unchecked Sendable {
         RunningProcesses.shared.add(self)
         defer { RunningProcesses.shared.remove(self) }
         try launch()
+        let watchdog = timeout.map { limit in
+            Task { [weak self] in
+                try? await Task.sleep(for: limit)
+                guard !Task.isCancelled else { return }
+                self?.expire()
+            }
+        }
+        defer { watchdog?.cancel() }
 
         async let stderrDrained: Void = Self.drain(stderrPipe.fileHandleForReading) { [self] in appendStderr($0) }
         async let stdoutDrained: Void = Self.drain(stdoutPipe?.fileHandleForReading) { [self] in appendStdout($0) }
@@ -169,10 +193,14 @@ private final class RunningProcess: @unchecked Sendable {
     }
 
     private func outcome() throws(ConversionError) {
-        let (cancelled, message) = lock.withLock {
-            (wasCancelled, String(decoding: stderrTail, as: UTF8.self))
+        let (cancelled, timedOut, message) = lock.withLock {
+            (wasCancelled, hasTimedOut, String(decoding: stderrTail, as: UTF8.self))
         }
         if cancelled { throw .cancelled }
+        if timedOut {
+            let minutes = Int((timeout?.components.seconds ?? 0) / 60)
+            throw .toolFailed(tool: toolName, message: "It didn’t finish within \(minutes) minutes.")
+        }
         guard process.terminationReason == .exit, process.terminationStatus == 0 else {
             let summary = Self.lastMeaningfulLine(of: message) ?? "exit status \(process.terminationStatus)"
             throw .toolFailed(tool: toolName, message: summary)

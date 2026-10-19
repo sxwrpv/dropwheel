@@ -19,7 +19,7 @@ cp "$BIN_DIR/Dropwheel" "$APP/Contents/MacOS/Dropwheel"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 IDENTITY="${DROPWHEEL_SIGN_IDENTITY:--}"
-codesign --force --options runtime --sign "$IDENTITY" "$APP"
+codesign --force --options runtime --entitlements Resources/Dropwheel.entitlements --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 
 echo "Built $APP (signed with: $IDENTITY)"

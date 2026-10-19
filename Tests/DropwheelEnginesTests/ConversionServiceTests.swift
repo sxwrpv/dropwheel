@@ -84,6 +84,27 @@ final class ConversionServiceTests {
         #expect(try String(contentsOf: existing, encoding: .utf8) == "keep me")
     }
 
+    @Test("The placeholder rename moves files and folders, and never replaces an existing item")
+    func placeholderRename() throws {
+        let file = folder.appendingPathComponent("a.partial")
+        try Data("new".utf8).write(to: file)
+        let fileTarget = folder.appendingPathComponent("a.txt")
+        #expect(ConversionService.placeholderRename(file, to: fileTarget) == 0)
+        #expect(try String(contentsOf: fileTarget, encoding: .utf8) == "new")
+
+        let pages = folder.appendingPathComponent("pages.partial", isDirectory: true)
+        try FileManager.default.createDirectory(at: pages, withIntermediateDirectories: true)
+        try Data("1".utf8).write(to: pages.appendingPathComponent("p1.png"))
+        let pagesTarget = folder.appendingPathComponent("Report (PNG)", isDirectory: true)
+        #expect(ConversionService.placeholderRename(pages, to: pagesTarget) == 0)
+        #expect(FileManager.default.fileExists(atPath: pagesTarget.appendingPathComponent("p1.png").path))
+
+        let other = folder.appendingPathComponent("b.partial")
+        try Data("other".utf8).write(to: other)
+        #expect(ConversionService.placeholderRename(other, to: fileTarget) == EEXIST)
+        #expect(try String(contentsOf: fileTarget, encoding: .utf8) == "new")
+    }
+
     @Test("Conversions outside the matrix are refused")
     func unsupported() async throws {
         let input = try makePNG(named: "photo.png")

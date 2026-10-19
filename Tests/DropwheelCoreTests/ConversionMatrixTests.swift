@@ -69,6 +69,61 @@ struct ConversionMatrixTests {
         #expect(ConversionMatrix.targets(for: [.input(.png), .input(.mp3)]).isEmpty)
     }
 
+    @Test("Office and document formats are found by name",
+          arguments: [("notes.textClipping", FileFormat.textClipping), ("Letter.RTFD", .rtfd), ("old.XLS", .xls),
+                      ("deck.pptx", .pptx), ("readme.md", .md), ("book.epub", .epub), ("data.tsv", .tsv)])
+    func officeLookup(name: String, expected: FileFormat) {
+        #expect(FileFormat(fileName: name) == expected)
+    }
+
+    @Test("PDF converts to documents, slides, sheets, images and text")
+    func pdfTargets() {
+        #expect(ConversionMatrix.targets(for: .pdf) == [.docx, .pages, .pptx, .xlsx, .jpg, .png, .epub, .txt, .md])
+    }
+
+    @Test("Documents convert among document formats, HTML and PDF")
+    func documentTargets() {
+        #expect(ConversionMatrix.targets(for: .docx) == [.pages, .md, .txt, .epub, .html, .pdf])
+        #expect(ConversionMatrix.targets(for: .txt) == [.docx, .pages, .md, .epub, .html, .pdf])
+    }
+
+    @Test("RTF, RTFD and text clippings are input only",
+          arguments: [FileFormat.rtf, .rtfd, .textClipping])
+    func richTextInputs(format: FileFormat) {
+        #expect(ConversionMatrix.targets(for: format) == [.docx, .pages, .md, .txt, .epub, .html, .pdf])
+        #expect(!ConversionMatrix.targets(for: .docx).contains(format))
+    }
+
+    @Test("HTML is export only")
+    func htmlExportOnly() {
+        #expect(ConversionMatrix.targets(for: .html).isEmpty)
+    }
+
+    @Test("Slides become PDF or images; old PPT can also become PPTX")
+    func slideTargets() {
+        #expect(ConversionMatrix.targets(for: .pptx) == [.pdf, .jpg, .png])
+        #expect(ConversionMatrix.targets(for: .ppt) == [.pdf, .jpg, .png, .pptx])
+    }
+
+    @Test("Spreadsheets convert among sheet formats and PDF; XLS is input only")
+    func sheetTargets() {
+        #expect(ConversionMatrix.targets(for: .xls) == [.xlsx, .ods, .csv, .tsv, .pdf])
+        #expect(ConversionMatrix.targets(for: .csv) == [.xlsx, .ods, .tsv, .pdf])
+        #expect(!ConversionMatrix.targets(for: .xlsx).contains(.xls))
+    }
+
+    @Test("Subtitles still export plain text")
+    func subtitleText() {
+        #expect(ConversionMatrix.targets(for: .srt).contains(.txt))
+    }
+
+    @Test("RTFD and Pages are packages; other formats are plain files")
+    func packages() {
+        #expect(FileFormat.rtfd.isPackage)
+        #expect(FileFormat.pages.isPackage)
+        #expect(!FileFormat.docx.isPackage)
+    }
+
     @Test("Unknown files and empty selections offer nothing")
     func unknown() {
         #expect(ConversionMatrix.targets(for: [.unknown]).isEmpty)
@@ -116,6 +171,13 @@ struct OutputNamingTests {
     func compound() {
         let input = folder.appendingPathComponent("backup.tar.gz")
         #expect(OutputNaming.destination(for: input, as: .zip, exists: { _ in false }).lastPathComponent == "backup.zip")
+    }
+
+    @Test("Multi-page image output goes in a folder named after the format")
+    func folderOutput() {
+        let input = folder.appendingPathComponent("Report.pdf")
+        let output = OutputNaming.destination(for: input, as: .png, outputIsDirectory: true, exists: { _ in false })
+        #expect(output.lastPathComponent == "Report (PNG)")
     }
 
     @Test("Folders gain the archive extension")

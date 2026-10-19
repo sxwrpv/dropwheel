@@ -5,12 +5,32 @@ public enum ExternalTool: String, CaseIterable, Sendable {
     case ffmpeg
     case ffprobe
     case cwebp
+    case pandoc
+    case soffice
 
     /// How the user can install the tool.
     public var installHint: String {
         switch self {
         case .ffmpeg, .ffprobe: "Install it with: brew install ffmpeg"
         case .cwebp: "Install it with: brew install webp"
+        case .pandoc: "Install it with: brew install pandoc"
+        case .soffice: "Install LibreOffice with: brew install --cask libreoffice"
+        }
+    }
+
+    /// Display name for messages.
+    public var displayName: String {
+        self == .soffice ? "LibreOffice" : rawValue
+    }
+
+    /// Places outside PATH where the tool lives, such as inside an app bundle.
+    fileprivate var bundledLocations: [String] {
+        switch self {
+        case .soffice:
+            ["/Applications/LibreOffice.app/Contents/MacOS/soffice",
+             NSHomeDirectory() + "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
+        default:
+            []
         }
     }
 }
@@ -29,11 +49,10 @@ public enum ToolLocator {
             return URL(fileURLWithPath: override)
         }
         let pathDirectories = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        for directory in searchDirectories + pathDirectories {
-            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(tool.rawValue)
-            if fileManager.isExecutableFile(atPath: candidate.path) { return candidate }
-        }
-        return nil
+            .filter { $0.hasPrefix("/") }
+        let candidates = tool.bundledLocations
+            + (searchDirectories + pathDirectories).map { "\($0)/\(tool.rawValue)" }
+        return candidates.first(where: fileManager.isExecutableFile(atPath:)).map(URL.init(fileURLWithPath:))
     }
 
     static func require(_ tool: ExternalTool) throws(ConversionError) -> URL {
