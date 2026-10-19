@@ -24,7 +24,7 @@ final class JobPanel {
             }
     }
 
-    private func jobsChanged(_ jobs: [ConversionJob]) {
+    private func jobsChanged(_ jobs: [Job]) {
         guard !jobs.isEmpty else {
             panel.orderOut(nil)
             return
@@ -97,14 +97,14 @@ private struct JobListView: View {
 }
 
 private struct JobRow: View {
-    let job: ConversionJob
+    let job: Job
     let onCancel: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 statusIcon
-                Text("\(job.input.lastPathComponent) → \(job.target.label)")
+                Text(job.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 4)

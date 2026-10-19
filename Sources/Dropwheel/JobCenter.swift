@@ -3,8 +3,8 @@ import DropwheelEngines
 import Foundation
 import os
 
-/// One conversion the user asked for.
-struct ConversionJob: Identifiable, Equatable {
+/// One conversion or tool run the user asked for.
+struct Job: Identifiable, Equatable {
     enum State: Equatable {
         case waiting
         case running(fraction: Double)
@@ -21,22 +21,26 @@ struct ConversionJob: Identifiable, Equatable {
     }
 
     let id: UUID
-    let input: URL
-    let target: FileFormat
+    /// What the panel shows, e.g. "photo.heic → JPG" or "clip.mov · Compress".
+    let title: String
     let state: State
 
-    func with(_ state: State) -> ConversionJob {
-        ConversionJob(id: id, input: input, target: target, state: state)
+    func with(_ state: State) -> Job {
+        Job(id: id, title: title, state: state)
     }
 }
 
-/// Runs conversions one at a time, in the order they were dropped. Video
-/// encodes use every core, so running several at once would only slow each down.
+/// The work behind a job: given a progress callback, produce the result's location.
+typealias JobWork = @Sendable (@escaping ProgressHandler) async throws(ConversionError) -> URL
+
+/// Runs jobs one at a time, in the order they were dropped. Video encodes
+/// use every core, so running several at once would only slow each down.
 @MainActor
 final class JobCenter: ObservableObject {
-    @Published private(set) var jobs: [ConversionJob] = []
+    @Published private(set) var jobs: [Job] = []
 
-    private let service = ConversionService()
+    private let conversions = ConversionService()
+    private let tools = ToolService()
     private let logger = Logger(subsystem: "dev.dropwheel", category: "Jobs")
     private var tasks: [UUID: Task<Void, Never>] = [:]
     /// The most recently queued job; the next one waits for it.
@@ -45,16 +49,27 @@ final class JobCenter: ObservableObject {
     var isBusy: Bool { jobs.contains { $0.state.isActive } }
 
     func convert(_ urls: [URL], to target: FileFormat) {
-        let queued = urls.map { ConversionJob(id: UUID(), input: $0, target: target, state: .waiting) }
-        jobs = jobs + queued
-        for job in queued {
-            let previous = tail
-            let task = Task { [weak self] in
-                await previous?.value
-                await self?.run(job)
+        let conversions = self.conversions
+        for url in urls {
+            enqueue(title: "\(url.lastPathComponent) → \(target.label)") { progress throws(ConversionError) in
+                try await conversions.convert(url, to: target, progress: progress)
             }
-            tasks[job.id] = task
-            tail = task
+        }
+    }
+
+    /// Whole-selection tools make one job; the others make one job per file.
+    func runTool(_ tool: ToolKind, on urls: [URL], options: ToolOptions) {
+        let tools = self.tools
+        if tool.usesWholeSelection {
+            enqueue(title: "\(urls.count) files · \(tool.title)") { progress throws(ConversionError) in
+                try await tools.run(tool, on: urls, options: options, progress: progress)
+            }
+            return
+        }
+        for url in urls {
+            enqueue(title: "\(url.lastPathComponent) · \(tool.title)") { progress throws(ConversionError) in
+                try await tools.run(tool, on: [url], options: options, progress: progress)
+            }
         }
     }
 
@@ -74,7 +89,19 @@ final class JobCenter: ObservableObject {
         jobs = jobs.filter(\.state.isActive)
     }
 
-    private func run(_ job: ConversionJob) async {
+    private func enqueue(title: String, work: @escaping JobWork) {
+        let job = Job(id: UUID(), title: title, state: .waiting)
+        jobs = jobs + [job]
+        let previous = tail
+        let task = Task { [weak self] in
+            await previous?.value
+            await self?.run(job, work: work)
+        }
+        tasks[job.id] = task
+        tail = task
+    }
+
+    private func run(_ job: Job, work: JobWork) async {
         defer { tasks[job.id] = nil }
         guard !Task.isCancelled else {
             update(job.id, to: .cancelled)
@@ -82,14 +109,14 @@ final class JobCenter: ObservableObject {
         }
         update(job.id, to: .running(fraction: 0))
         do {
-            let output = try await service.convert(job.input, to: job.target) { [weak self] fraction in
+            let output = try await work { [weak self] fraction in
                 Task { @MainActor in self?.reportProgress(job.id, fraction) }
             }
             update(job.id, to: .finished(output))
         } catch .cancelled {
             update(job.id, to: .cancelled)
         } catch {
-            logger.error("Converting \(job.input.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("\(job.title, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
             update(job.id, to: .failed(error.localizedDescription))
         }
     }
@@ -101,7 +128,7 @@ final class JobCenter: ObservableObject {
         update(id, to: .running(fraction: fraction))
     }
 
-    private func update(_ id: UUID, to state: ConversionJob.State) {
+    private func update(_ id: UUID, to state: Job.State) {
         jobs = jobs.map { $0.id == id ? $0.with(state) : $0 }
     }
 }

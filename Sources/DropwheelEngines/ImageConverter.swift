@@ -7,7 +7,7 @@ import ImageIO
 /// can read WebP but not write it) and SVG rendered with AppKit.
 struct ImageConverter: Converter {
     private static let lossyQuality: [FileFormat: Double] = [.jpg: 0.9, .heic: 0.85, .avif: 0.8]
-    private static let webpQuality = "85"
+    static let webpQuality = "85"
     /// SVGs have no pixel size, so they are rendered with this long edge at least,
     private static let svgMinimumLongEdge: CGFloat = 1024
     /// and never larger than this, to bound memory for huge drawings.
@@ -31,14 +31,14 @@ struct ImageConverter: Converter {
 
     // MARK: Reading
 
-    private struct LoadedImage {
+    struct LoadedImage {
         /// Pixels already rotated upright, so the orientation tag can be reset.
         let image: CGImage
         let properties: [CFString: Any]
         let dpi: Double
     }
 
-    private static func load(_ url: URL) throws(ConversionError) -> LoadedImage {
+    static func load(_ url: URL) throws(ConversionError) -> LoadedImage {
         if FileFormat(fileName: url.lastPathComponent) == .svg {
             return try loadSVG(url)
         }
@@ -85,7 +85,7 @@ struct ImageConverter: Converter {
 
     // MARK: Writing
 
-    private static func write(_ source: LoadedImage, as target: FileFormat, to output: URL) throws(ConversionError) {
+    static func write(_ source: LoadedImage, as target: FileFormat, to output: URL) throws(ConversionError) {
         guard let type = ImageTypes.identifiers[target],
               let destination = CGImageDestinationCreateWithURL(output as CFURL, type as CFString, 1, nil) else {
             throw .writeFailed("This Mac can’t write \(target.label) images.")
@@ -102,7 +102,7 @@ struct ImageConverter: Converter {
 
     /// Keeps camera and location metadata, resets orientation (pixels are
     /// already upright) and sets lossy quality where it applies.
-    private static func outputProperties(_ properties: [CFString: Any], target: FileFormat) -> [CFString: Any] {
+    static func outputProperties(_ properties: [CFString: Any], target: FileFormat) -> [CFString: Any] {
         var result = properties
         result[kCGImagePropertyOrientation] = 1
         if var tiff = result[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
@@ -131,16 +131,16 @@ struct ImageConverter: Converter {
     }
 
     /// cwebp reads PNG, so the upright pixels go through a temporary PNG.
-    private static func writeWebP(_ source: LoadedImage, to output: URL) async throws(ConversionError) {
+    static func writeWebP(_ source: LoadedImage, to output: URL, quality: String = webpQuality) async throws(ConversionError) {
         let cwebp = try ToolLocator.require(.cwebp)
         let temporaryPNG = FileManager.default.temporaryDirectory
             .appendingPathComponent("dropwheel-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: temporaryPNG) }
         try write(LoadedImage(image: source.image, properties: [:], dpi: source.dpi), as: .png, to: temporaryPNG)
-        try await ProcessRunner.run(cwebp, arguments: ["-quiet", "-q", webpQuality, temporaryPNG.path, "-o", output.path])
+        try await ProcessRunner.run(cwebp, arguments: ["-quiet", "-q", quality, temporaryPNG.path, "-o", output.path])
     }
 
-    private static func flattened(_ image: CGImage) throws(ConversionError) -> CGImage {
+    static func flattened(_ image: CGImage) throws(ConversionError) -> CGImage {
         guard hasAlpha(image) else { return image }
         guard let context = makeContext(width: image.width, height: image.height, opaque: true) else {
             throw .writeFailed("Couldn’t prepare the image.")
@@ -160,7 +160,7 @@ struct ImageConverter: Converter {
         }
     }
 
-    private static func makeContext(width: Int, height: Int, opaque: Bool) -> CGContext? {
+    static func makeContext(width: Int, height: Int, opaque: Bool) -> CGContext? {
         let alpha: CGImageAlphaInfo = opaque ? .noneSkipLast : .premultipliedLast
         return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                          space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),

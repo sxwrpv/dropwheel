@@ -82,6 +82,14 @@ struct FilePathsTests {
         #expect(WheelCatalog.items(for: .conversions, selection: [.unknown]).isEmpty)
     }
 
+    @Test("Tools wheel lists the tools for the selection")
+    func toolCatalog() {
+        let items = WheelCatalog.items(for: .tools, selection: [.input(.pdf), .input(.pdf)])
+        #expect(items.map(\.label) == ["COMPRESS", "METADATA", "MERGE"])
+        #expect(items.last?.title == "Merge PDFs")
+        #expect(items.last?.action == .tool(.mergePDFs))
+    }
+
     @Test("Action wheel lists all six actions in order")
     func actionCatalog() {
         let titles = WheelCatalog.items(for: .actions).map(\.title)

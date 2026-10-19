@@ -7,13 +7,28 @@ public enum FFmpegArguments {
         "fps=12,scale='min(720,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a"
 
     public static func encode(input: String, output: String, target: FileFormat) -> [String] {
-        // -n refuses to overwrite: output paths are always fresh, so a clash is a bug.
-        let head = ["-hide_banner", "-nostdin", "-n", "-i", input]
-        let tail = ["-map_metadata", "0", "-progress", "pipe:1", "-nostats", output]
-        return head + codecArguments(for: target) + tail
+        command(input: input, options: codecArguments(for: target), output: output)
     }
 
-    static func codecArguments(for target: FileFormat) -> [String] {
+    /// The shared shape of every Dropwheel ffmpeg run. `-n` refuses to
+    /// overwrite: output paths are always fresh, so a clash is a bug.
+    /// Progress goes to stdout for `FFmpegProgress`.
+    public static func command(
+        inputOptions: [String] = [],
+        input: String,
+        options: [String],
+        output: String,
+        keepMetadata: Bool = true
+    ) -> [String] {
+        let head = ["-hide_banner", "-nostdin", "-n"] + inputOptions + ["-i", input]
+        // Stripping clears file-level tags and chapters only: per-stream tags
+        // such as an attachment's filename are required by the muxer.
+        let metadata = keepMetadata ? ["-map_metadata", "0"] : ["-map_metadata:g", "-1", "-map_chapters", "-1"]
+        return head + options + metadata + ["-progress", "pipe:1", "-nostats", output]
+    }
+
+    /// Encoder settings for writing `target`.
+    public static func codecArguments(for target: FileFormat) -> [String] {
         switch target {
         // Audio
         case .mp3: ["-vn", "-c:a", "libmp3lame", "-q:a", "2"]

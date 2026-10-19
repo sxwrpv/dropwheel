@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let shelf = FloatShelf()
     private let wheel = WheelPanelController()
     private let jobs = JobCenter()
+    private let toolOptions = ToolOptionsPanel()
     private lazy var jobPanel = JobPanel(center: jobs)
     private lazy var dragMonitor = DragMonitor(bindings: preferences.keyBindings)
     private lazy var actions = FileActionPerformer(shelf: shelf, preferences: preferences)
@@ -26,10 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dragMonitor.start()
         _ = jobPanel
+        #if DEBUG
         showPreviewWheelIfRequested()
+        #endif
     }
 
-    /// Development aid: `DROPWHEEL_PREVIEW_WHEEL=actions` opens that wheel at
+    #if DEBUG
+    /// Development aid, debug builds only: `DROPWHEEL_PREVIEW_WHEEL=actions` opens that wheel at
     /// launch, so drops can be tested without holding a key mid-drag.
     /// `DROPWHEEL_PREVIEW_FILES=/a.png:/b.heic` stands in for the dragged files,
     /// and `DROPWHEEL_PREVIEW_CONVERT=jpg` queues them as if dropped on that slice.
@@ -42,10 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !files.isEmpty { dragSelection = files.map(ConversionService.selectionItem) }
             handle(.showWheel(kind))
         }
+        if let raw = environment["DROPWHEEL_PREVIEW_TOOL"], let tool = ToolKind(rawValue: raw), !files.isEmpty {
+            handleDrop(WheelItem.tool(tool), urls: files)
+        }
         if let raw = environment["DROPWHEEL_PREVIEW_CONVERT"], let format = FileFormat(rawValue: raw), !files.isEmpty {
             handleDrop(WheelItem.conversion(to: format), urls: files)
         }
     }
+    #endif
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard actions.isBusy || jobs.isBusy else { return .terminateNow }
@@ -94,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func emptyMessage(for kind: WheelKind) -> String {
         switch kind {
         case .conversions: "No shared formats"
-        case .tools: "Coming soon"
+        case .tools: "No tools for this selection"
         case .actions: ""
         }
     }
@@ -105,6 +113,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             actions.perform(kind, on: urls)
         case .convert(let format):
             jobs.convert(urls, to: format)
+        case .tool(let kind):
+            runTool(kind, on: urls)
+        }
+    }
+
+    /// Tools with choices ask first; the rest run straight away.
+    private func runTool(_ kind: ToolKind, on urls: [URL]) {
+        guard kind.needsOptions else {
+            jobs.runTool(kind, on: urls, options: .none)
+            return
+        }
+        // PDFs can only be compressed with presets, not to a size, so a size
+        // goal is offered only when no file in the selection is a PDF.
+        let allowsSizeGoals = !urls.contains { FileFormat(fileName: $0.lastPathComponent) == .pdf }
+        let fileCount = kind.usesWholeSelection ? 1 : urls.count
+        toolOptions.present(tool: kind, fileCount: fileCount, allowsSizeGoals: allowsSizeGoals) { [weak self] options in
+            self?.jobs.runTool(kind, on: urls, options: options)
         }
     }
 

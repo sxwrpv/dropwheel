@@ -8,6 +8,11 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
     case unreadableInput(String)
     case noText(String)
     case passwordProtected(String)
+    case notSmaller(String)
+    case targetTooSmall(String)
+    case nothingToSplit(String)
+    case multiFrame(String)
+    case toolUnavailable(tool: String, input: String)
     case toolFailed(tool: String, message: String)
     case writeFailed(String)
     case cancelled
@@ -22,6 +27,16 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
             "This conversion needs \(name), which you can get free from the App Store."
         case .unreadableInput(let name):
             "\(name) couldn’t be read. It may be damaged or in an unexpected format."
+        case .multiFrame(let name):
+            "\(name) has several pages or frames. This tool works on single images only."
+        case .nothingToSplit(let name):
+            "\(name) is too short to split that way."
+        case .toolUnavailable(let tool, let input):
+            "\(tool) isn’t available for \(input)."
+        case .notSmaller(let name):
+            "\(name) is already as small as this setting can make it, so no copy was saved."
+        case .targetTooSmall(let name):
+            "That size is too small for \(name). Choose a larger size or a preset."
         case .passwordProtected(let name):
             "\(name) is password-protected. Open it, remove the password, then convert it."
         case .noText(let name):

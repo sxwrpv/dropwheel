@@ -1,4 +1,3 @@
-import Darwin
 import DropwheelCore
 import Foundation
 
@@ -13,12 +12,10 @@ protocol Converter: Sendable {
 /// Entry point for all conversions: picks the engine, and writes the result
 /// beside the original without ever overwriting an existing file.
 public struct ConversionService: Sendable {
-    private static let maximumRenameAttempts = 100
-
     public init() {}
 
-    /// What a dragged URL counts as for the conversion wheel. Symlinks to
-    /// folders count as folders; package formats such as RTFD are files.
+    /// What a dragged URL counts as for the wheels. Symlinks to folders
+    /// count as folders; package formats such as RTFD are files.
     public static func selectionItem(for url: URL) -> SelectionItem {
         let format = FileFormat(fileName: url.lastPathComponent)
         let resolved = url.resolvingSymlinksInPath()
@@ -27,8 +24,8 @@ public struct ConversionService: Sendable {
         return format.map(SelectionItem.input) ?? .unknown
     }
 
-    /// Deletes the hidden partial files and scratch folders of conversions
-    /// still running. The app calls this when it quits, after stopping the tools.
+    /// Deletes the hidden partial files and scratch folders of work still
+    /// running. The app calls this when it quits, after stopping the tools.
     public static func discardWorkInProgress() {
         WorkInProgress.shared.removeAll()
     }
@@ -40,21 +37,17 @@ public struct ConversionService: Sendable {
             throw .unsupported(input: input.lastPathComponent, target: target)
         }
         let converter = try converter(for: item, target: target)
+        let fileManager = FileManager.default
 
-        // Work in a hidden file beside the result, then rename it into place.
-        // A failure or cancellation never leaves a half-written file behind.
-        let directory = input.deletingLastPathComponent()
-        let partial = directory.appendingPathComponent(
-            ".\(UUID().uuidString.prefix(8)).dropwheel-partial.\(target.preferredExtension)")
-        WorkInProgress.shared.add(partial)
-        defer {
-            try? FileManager.default.removeItem(at: partial)
-            WorkInProgress.shared.remove(partial)
+        return try await OutputWriter.write(near: input, partialExtension: target.preferredExtension) { outputIsDirectory in
+            // A package such as an RTFD is a folder on disk but a single document.
+            OutputNaming.destination(for: input, as: target, isDirectory: item == .folder,
+                                     outputIsDirectory: outputIsDirectory && !target.isPackage) {
+                fileManager.fileExists(atPath: $0.path)
+            }
+        } produce: { partial throws(ConversionError) in
+            try await converter.convert(input, to: target, output: partial, progress: progress)
         }
-
-        try await converter.convert(input, to: target, output: partial, progress: progress)
-        try Task.checkCancellation(or: .cancelled)
-        return try Self.moveIntoPlace(partial, for: input, as: target, isDirectory: item == .folder)
     }
 
     /// Picks the engine for the input. Folders and archives go to the
@@ -77,65 +70,9 @@ public struct ConversionService: Sendable {
             }
         }
     }
-
-    /// Renames with RENAME_EXCL, so a file that appears at the chosen name
-    /// in the meantime (another app, another conversion) is never replaced.
-    /// Converters that produce several pages write a folder instead of a file.
-    private static func moveIntoPlace(_ partial: URL, for input: URL, as target: FileFormat, isDirectory: Bool) throws(ConversionError) -> URL {
-        let fileManager = FileManager.default
-        var partialIsDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: partial.path, isDirectory: &partialIsDirectory) else {
-            throw .writeFailed("The converter finished without producing a file.")
-        }
-        // A package such as an RTFD is a folder on disk but a single document.
-        let outputIsFolder = partialIsDirectory.boolValue && !target.isPackage
-        for _ in 0..<maximumRenameAttempts {
-            let destination = OutputNaming.destination(for: input, as: target, isDirectory: isDirectory,
-                                                       outputIsDirectory: outputIsFolder) {
-                fileManager.fileExists(atPath: $0.path)
-            }
-            switch exclusiveRename(partial, to: destination) {
-            case 0: return destination
-            case EEXIST: continue
-            case let code: throw .writeFailed(String(cString: strerror(code)))
-            }
-        }
-        throw .writeFailed("Couldn’t find a free name for the converted file.")
-    }
-
-    /// Returns 0 on success or an errno value.
-    private static func exclusiveRename(_ source: URL, to destination: URL) -> Int32 {
-        if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return 0 }
-        let renameError = errno
-        guard renameError == ENOTSUP || renameError == EINVAL else { return renameError }
-        return placeholderRename(source, to: destination)
-    }
-
-    /// For volumes without RENAME_EXCL (exFAT, FAT, some network shares):
-    /// claim the name with an exclusive create (a file, or an empty folder
-    /// for folder output), then rename over that placeholder. Hard links,
-    /// the usual alternative, fail on those volumes and never work for folders.
-    static func placeholderRename(_ source: URL, to destination: URL) -> Int32 {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory) else { return ENOENT }
-        if isDirectory.boolValue {
-            guard mkdir(destination.path, 0o755) == 0 else { return errno }
-        } else {
-            let descriptor = open(destination.path, O_CREAT | O_EXCL | O_WRONLY, 0o644)
-            guard descriptor >= 0 else { return errno }
-            close(descriptor)
-        }
-        guard rename(source.path, destination.path) == 0 else {
-            let code = errno
-            // Remove only the placeholder made above, which is still empty.
-            _ = isDirectory.boolValue ? rmdir(destination.path) : unlink(destination.path)
-            return code
-        }
-        return 0
-    }
 }
 
-/// Partial files and scratch folders that belong to running conversions.
+/// Partial files and scratch folders that belong to running work.
 final class WorkInProgress: @unchecked Sendable {
     static let shared = WorkInProgress()
     private let lock = NSLock()

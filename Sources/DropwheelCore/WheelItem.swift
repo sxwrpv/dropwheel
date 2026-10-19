@@ -31,10 +31,11 @@ public enum FileActionKind: String, CaseIterable, Sendable {
     }
 }
 
-/// What dropping onto a slice does. File tools join in a later phase.
+/// What dropping onto a slice does.
 public enum WheelAction: Equatable, Sendable {
     case fileAction(FileActionKind)
     case convert(FileFormat)
+    case tool(ToolKind)
 }
 
 public struct WheelItem: Equatable, Identifiable, Sendable {
@@ -64,6 +65,16 @@ public struct WheelItem: Equatable, Identifiable, Sendable {
         )
     }
 
+    public static func tool(_ kind: ToolKind) -> WheelItem {
+        WheelItem(
+            id: "tool.\(kind.rawValue)",
+            label: kind.label,
+            title: kind.title,
+            symbolName: kind.symbolName,
+            action: .tool(kind)
+        )
+    }
+
     public static func conversion(to format: FileFormat) -> WheelItem {
         WheelItem(
             id: "convert.\(format.rawValue)",
@@ -89,8 +100,7 @@ public enum WheelCatalog {
         case .conversions:
             ConversionMatrix.targets(for: selection, capabilities: capabilities).map(WheelItem.conversion)
         case .tools:
-            // Filled in by the file tools phase.
-            []
+            ToolCatalog.tools(for: selection, capabilities: capabilities).map(WheelItem.tool)
         }
     }
 }

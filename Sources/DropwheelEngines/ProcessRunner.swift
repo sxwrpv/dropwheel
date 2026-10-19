@@ -9,7 +9,8 @@ import Foundation
 /// task terminates the tool.
 public enum ProcessRunner {
     /// Bytes of stderr kept for error messages.
-    static let stderrTailLimit = 2_000
+    /// Large enough for ffmpeg's loudness report, which comes at the very end.
+    static let stderrTailLimit = 8_000
 
     /// Groups the processes `run` starts; only tests use anything but `standardTag`.
     static let standardTag = "dropwheel"
@@ -26,7 +27,9 @@ public enum ProcessRunner {
     }
 
     /// `timeout` stops a tool that hangs, for example on a dialog it can't
-    /// show, so it can't hold up the conversions queued behind it.
+    /// show, so it can't hold up the conversions queued behind it. Returns
+    /// the end of the tool's stderr, where some tools print their reports.
+    @discardableResult
     static func run(
         _ executable: URL,
         arguments: [String],
@@ -34,11 +37,11 @@ public enum ProcessRunner {
         tag: String = standardTag,
         timeout: Duration? = nil,
         onLine: (@Sendable (String) -> Void)? = nil
-    ) async throws(ConversionError) {
+    ) async throws(ConversionError) -> String {
         let process = RunningProcess(executable: executable, arguments: arguments, tag: tag, timeout: timeout,
                                      standardOutputFile: standardOutputFile, onLine: onLine)
         do {
-            try await withTaskCancellationHandler {
+            return try await withTaskCancellationHandler {
                 try await process.runToCompletion()
             } onCancel: {
                 process.terminate()
@@ -117,7 +120,7 @@ private final class RunningProcess: @unchecked Sendable {
         if launched { process.terminate() }
     }
 
-    func runToCompletion() async throws(ConversionError) {
+    func runToCompletion() async throws(ConversionError) -> String {
         process.standardInput = FileHandle.nullDevice
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
@@ -146,6 +149,7 @@ private final class RunningProcess: @unchecked Sendable {
         _ = await (stderrDrained, stdoutDrained)
         flushLastLine()
         try outcome()
+        return lock.withLock { String(decoding: stderrTail, as: UTF8.self) }
     }
 
     /// Launching under the same lock that `terminate()` takes means a cancel
