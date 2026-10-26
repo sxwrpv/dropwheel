@@ -6,12 +6,12 @@ import Testing
 struct ToolCatalogTests {
     @Test("A photo offers Compress and Remove Metadata")
     func singleImage() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg)]) == [.compress, .removeMetadata])
+        #expect(ToolCatalog.tools(for: [.input(.jpg)]) == [.compress, .removeMetadata, .crop])
     }
 
     @Test("Several images can also become one PDF")
     func severalImages() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .createPDF])
+        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .crop, .createPDF])
     }
 
     @Test("Several PDFs can be merged; one PDF cannot")
@@ -22,12 +22,12 @@ struct ToolCatalogTests {
 
     @Test("Audio offers loudness and channel tools")
     func audio() {
-        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .normalizeVolume, .audioChannels])
+        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels])
     }
 
     @Test("Video offers speed and split; several clips can be joined")
     func video() {
-        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .changeSpeed, .splitVideo])
+        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo])
         #expect(ToolCatalog.tools(for: [.input(.mov), .input(.mp4)]).last == .joinVideos)
     }
 
@@ -47,7 +47,7 @@ struct ToolCatalogTests {
     func capabilities() {
         let noAVIF = FormatCapabilities(canRead: { $0 != .avif }, canWrite: { $0 != .avif })
         #expect(ToolCatalog.tools(for: [.input(.avif)], capabilities: noAVIF).isEmpty)
-        #expect(ToolCatalog.tools(for: [.input(.jpg)], capabilities: noAVIF) == [.compress, .removeMetadata])
+        #expect(ToolCatalog.tools(for: [.input(.jpg)], capabilities: noAVIF) == [.compress, .removeMetadata, .crop])
     }
 
     @Test("Tools that need choices say so")

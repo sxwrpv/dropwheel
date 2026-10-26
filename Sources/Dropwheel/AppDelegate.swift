@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let wheel = WheelPanelController()
     private let jobs = JobCenter()
     private let toolOptions = ToolOptionsPanel()
+    private let editors = EditorWindows()
     private lazy var jobPanel = JobPanel(center: jobs)
     private lazy var dragMonitor = DragMonitor(bindings: preferences.keyBindings)
     private lazy var actions = FileActionPerformer(shelf: shelf, preferences: preferences)
@@ -120,6 +121,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Tools with choices ask first; the rest run straight away.
     private func runTool(_ kind: ToolKind, on urls: [URL]) {
+        if kind.opensEditor {
+            // One editor per file; each saves its own copy.
+            for url in urls {
+                editors.open(tool: kind, url: url) { [weak self] options in
+                    self?.jobs.runTool(kind, on: [url], options: options)
+                }
+            }
+            return
+        }
         guard kind.needsOptions else {
             jobs.runTool(kind, on: urls, options: .none)
             return

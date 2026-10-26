@@ -211,6 +211,15 @@ public struct MediaInfo: Equatable, Sendable {
     public let channels: Int?
     public let hasAudio: Bool
     public let hasVideo: Bool
+    /// True for video turned a quarter turn for display, such as portrait phone clips.
+    public let isSideways: Bool
+
+    /// The picture's size after rotation, in stored pixels. ffmpeg rotates
+    /// frames before filtering, so crops are measured in this space.
+    public var rotatedSize: (width: Int, height: Int)? {
+        guard let width, let height else { return nil }
+        return isSideways ? (height, width) : (width, height)
+    }
 
     /// Parses `ffprobe -print_format json -show_format -show_streams`.
     /// Album art in audio files is not counted as video.
@@ -233,7 +242,8 @@ public struct MediaInfo: Equatable, Sendable {
             sampleRate: (audio?["sample_rate"] as? String).flatMap(Int.init),
             channels: audio?["channels"] as? Int,
             hasAudio: audio != nil,
-            hasVideo: video != nil
+            hasVideo: video != nil,
+            isSideways: video.map(isSideways) ?? false
         )
     }
 

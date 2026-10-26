@@ -4,6 +4,8 @@ import Foundation
 public enum ToolKind: String, CaseIterable, Sendable {
     case compress
     case removeMetadata
+    case crop
+    case trim
     case normalizeVolume
     case audioChannels
     case changeSpeed
@@ -16,6 +18,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "Compress"
         case .removeMetadata: "Remove Metadata"
+        case .crop: "Crop"
+        case .trim: "Trim"
         case .normalizeVolume: "Normalize Volume"
         case .audioChannels: "Audio Channels"
         case .changeSpeed: "Change Speed"
@@ -31,6 +35,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "COMPRESS"
         case .removeMetadata: "METADATA"
+        case .crop: "CROP"
+        case .trim: "TRIM"
         case .normalizeVolume: "NORMALIZE"
         case .audioChannels: "CHANNELS"
         case .changeSpeed: "SPEED"
@@ -45,6 +51,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "arrow.down.right.and.arrow.up.left"
         case .removeMetadata: "tag.slash"
+        case .crop: "crop"
+        case .trim: "timeline.selection"
         case .normalizeVolume: "speaker.wave.3"
         case .audioChannels: "hifispeaker.2"
         case .changeSpeed: "speedometer"
@@ -59,8 +67,13 @@ public enum ToolKind: String, CaseIterable, Sendable {
     public var needsOptions: Bool {
         switch self {
         case .compress, .normalizeVolume, .audioChannels, .changeSpeed, .splitVideo: true
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos: false
+        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim: false
         }
+    }
+
+    /// Tools that open an editing window, one per file, instead of running straight away.
+    public var opensEditor: Bool {
+        self == .crop || self == .trim
     }
 
     /// Tools that turn the whole selection into one result, rather than
@@ -97,10 +110,10 @@ public enum ToolCatalog {
 
     private static func singleFileTools(for format: FileFormat) -> Set<ToolKind> {
         switch format.family {
-        case .image: compressibleImages.contains(format) ? [.compress, .removeMetadata] : []
+        case .image: compressibleImages.contains(format) ? [.compress, .removeMetadata, .crop] : []
         case .pdf: [.compress, .removeMetadata]
-        case .audio: [.compress, .removeMetadata, .normalizeVolume, .audioChannels]
-        case .video: format == .gif ? [] : [.compress, .removeMetadata, .changeSpeed, .splitVideo]
+        case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels]
+        case .video: format == .gif ? [] : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo]
         default: []
         }
     }
@@ -183,6 +196,12 @@ public enum ToolOptions: Equatable, Sendable {
     case split(SplitPlan)
     case channels(ChannelLayout)
     case loudness(LoudnessTarget)
+    /// From the crop editor; an output size resizes the cropped area to exact pixels.
+    case crop(CropRecipe, outputWidth: Int?, outputHeight: Int?)
+    /// From the trim editor.
+    case trim(TrimRange)
+    /// Trim only the silence at the start and end of a recording.
+    case trimSilence
 
     public static let speedChoices: [Double] = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 4]
 
@@ -193,7 +212,7 @@ public enum ToolOptions: Equatable, Sendable {
         case .splitVideo: .split(.equalParts(2))
         case .audioChannels: .channels(.mono)
         case .normalizeVolume: .loudness(.podcast)
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos: .none
+        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim: .none
         }
     }
 }

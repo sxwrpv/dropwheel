@@ -12,6 +12,7 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
     case targetTooSmall(String)
     case nothingToSplit(String)
     case multiFrame(String)
+    case invalidTrim(String)
     case toolUnavailable(tool: String, input: String)
     case toolFailed(tool: String, message: String)
     case writeFailed(String)
@@ -27,6 +28,8 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
             "This conversion needs \(name), which you can get free from the App Store."
         case .unreadableInput(let name):
             "\(name) couldn’t be read. It may be damaged or in an unexpected format."
+        case .invalidTrim(let name):
+            "Choose a part of \(name) that is inside the recording and shorter than all of it."
         case .multiFrame(let name):
             "\(name) has several pages or frames. This tool works on single images only."
         case .nothingToSplit(let name):

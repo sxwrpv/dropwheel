@@ -78,6 +78,17 @@ public struct ToolService: Sendable {
             try ImageTools.createPDF(from: inputs, output: output, progress: progress)
         case (.mergePDFs, _):
             try PDFTools.merge(inputs, output: output, progress: progress)
+        case (.crop, .crop(let recipe, let width, let height)):
+            if format.family == .video {
+                try await EditTools.cropVideo(input, format: format, recipe: recipe, output: output, progress: progress)
+            } else {
+                try await EditTools.cropImage(input, format: format, recipe: recipe, outputWidth: width,
+                                              outputHeight: height, output: output)
+            }
+        case (.trim, .trim(let range)):
+            try await EditTools.trim(input, format: format, range: range, output: output, progress: progress)
+        case (.trim, .trimSilence):
+            try await EditTools.trimSilence(input, format: format, output: output, progress: progress)
         case (.joinVideos, _):
             try await MediaTools.join(inputs, output: output, progress: progress)
         default:
@@ -111,6 +122,8 @@ public struct ToolService: Sendable {
         case .createPDF: return ("combined", FileFormat.pdf.preferredExtension)
         case .mergePDFs: return ("merged", FileFormat.pdf.preferredExtension)
         case .joinVideos: return ("joined", FileFormat.mp4.preferredExtension)
+        case .crop: return ("cropped", format.preferredExtension)
+        case .trim: return ("trimmed", format.preferredExtension)
         }
     }
 
