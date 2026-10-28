@@ -5,6 +5,10 @@ public enum ToolKind: String, CaseIterable, Sendable {
     case compress
     case removeMetadata
     case crop
+    case editPhoto
+    case annotate
+    case addBackground
+    case redactPhoto
     case trim
     case normalizeVolume
     case audioChannels
@@ -19,6 +23,10 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .compress: "Compress"
         case .removeMetadata: "Remove Metadata"
         case .crop: "Crop"
+        case .editPhoto: "Edit Photo"
+        case .annotate: "Annotate"
+        case .addBackground: "Add a Background"
+        case .redactPhoto: "Redact"
         case .trim: "Trim"
         case .normalizeVolume: "Normalize Volume"
         case .audioChannels: "Audio Channels"
@@ -36,6 +44,10 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .compress: "COMPRESS"
         case .removeMetadata: "METADATA"
         case .crop: "CROP"
+        case .editPhoto: "EDIT"
+        case .annotate: "ANNOTATE"
+        case .addBackground: "BACKGROUND"
+        case .redactPhoto: "REDACT"
         case .trim: "TRIM"
         case .normalizeVolume: "NORMALIZE"
         case .audioChannels: "CHANNELS"
@@ -52,6 +64,10 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .compress: "arrow.down.right.and.arrow.up.left"
         case .removeMetadata: "tag.slash"
         case .crop: "crop"
+        case .editPhoto: "slider.horizontal.3"
+        case .annotate: "pencil.tip.crop.circle"
+        case .addBackground: "rectangle.inset.filled"
+        case .redactPhoto: "eye.slash"
         case .trim: "timeline.selection"
         case .normalizeVolume: "speaker.wave.3"
         case .audioChannels: "hifispeaker.2"
@@ -67,13 +83,17 @@ public enum ToolKind: String, CaseIterable, Sendable {
     public var needsOptions: Bool {
         switch self {
         case .compress, .normalizeVolume, .audioChannels, .changeSpeed, .splitVideo: true
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim: false
+        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
+             .editPhoto, .annotate, .addBackground, .redactPhoto: false
         }
     }
 
     /// Tools that open an editing window, one per file, instead of running straight away.
     public var opensEditor: Bool {
-        self == .crop || self == .trim
+        switch self {
+        case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto: true
+        default: false
+        }
     }
 
     /// Tools that turn the whole selection into one result, rather than
@@ -110,7 +130,8 @@ public enum ToolCatalog {
 
     private static func singleFileTools(for format: FileFormat) -> Set<ToolKind> {
         switch format.family {
-        case .image: compressibleImages.contains(format) ? [.compress, .removeMetadata, .crop] : []
+        case .image: compressibleImages.contains(format)
+            ? [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto] : []
         case .pdf: [.compress, .removeMetadata]
         case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels]
         case .video: format == .gif ? [] : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo]
@@ -202,6 +223,10 @@ public enum ToolOptions: Equatable, Sendable {
     case trim(TrimRange)
     /// Trim only the silence at the start and end of a recording.
     case trimSilence
+    case photoEdit(PhotoAdjustments)
+    case background(BackgroundRecipe)
+    case annotations([Annotation])
+    case redactions([RedactionRegion])
 
     public static let speedChoices: [Double] = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 4]
 
@@ -212,7 +237,8 @@ public enum ToolOptions: Equatable, Sendable {
         case .splitVideo: .split(.equalParts(2))
         case .audioChannels: .channels(.mono)
         case .normalizeVolume: .loudness(.podcast)
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim: .none
+        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
+             .editPhoto, .annotate, .addBackground, .redactPhoto: .none
         }
     }
 }

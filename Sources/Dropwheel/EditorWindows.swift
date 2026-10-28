@@ -7,6 +7,8 @@ import SwiftUI
 @MainActor
 final class EditorWindows {
     private static let defaultSize = NSSize(width: 760, height: 560)
+    /// Photo editors have a side panel or toolbar, so they open larger.
+    private static let photoEditorSize = NSSize(width: 960, height: 640)
     private static let minimumSize = NSSize(width: 520, height: 400)
     private static let cascadeOffset: CGFloat = 28
 
@@ -28,12 +30,20 @@ final class EditorWindows {
             content = AnyView(CropEditorView(url: url, isVideo: isVideo, onSave: save, onCancel: cancel))
         case .trim:
             content = AnyView(TrimEditorView(url: url, isVideo: isVideo, onSave: save, onCancel: cancel))
+        case .editPhoto:
+            content = AnyView(PhotoAdjustEditorView(url: url, onSave: save, onCancel: cancel))
+        case .addBackground:
+            content = AnyView(BackgroundEditorView(url: url, onSave: save, onCancel: cancel))
+        case .annotate:
+            content = AnyView(AnnotateEditorView(url: url, onSave: save, onCancel: cancel))
+        case .redactPhoto:
+            content = AnyView(RedactEditorView(url: url, onSave: save, onCancel: cancel))
         default:
             return
         }
 
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+            contentRect: NSRect(origin: .zero, size: tool == .crop || tool == .trim ? Self.defaultSize : Self.photoEditorSize),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -43,7 +53,7 @@ final class EditorWindows {
         window.isReleasedWhenClosed = false
         // After a drop Finder is still frontmost; the window must stay visible regardless.
         window.hidesOnDeactivate = false
-        window.contentView = NSHostingView(rootView: content)
+        window.contentView = FirstClickHostingView(rootView: content)
         window.center()
         let offset = Self.cascadeOffset * CGFloat(windows.count)
         window.setFrameOrigin(NSPoint(x: window.frame.minX + offset, y: window.frame.minY - offset))
@@ -78,9 +88,17 @@ final class EditorWindows {
     }
 }
 
+/// Finder usually stays frontmost after a drop, so the editor may not be
+/// the key window; the first click on a canvas should still draw or drag.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// A small shared footer: what is being changed, plus Cancel and Save.
 struct EditorFooter<Leading: View>: View {
     let canSave: Bool
+    /// Off when the editor has a text field, where Return should finish typing, not save.
+    var savesOnReturn = true
     let onCancel: () -> Void
     let onSave: () -> Void
     @ViewBuilder let leading: () -> Leading
@@ -92,7 +110,7 @@ struct EditorFooter<Leading: View>: View {
             Button("Cancel", action: onCancel)
                 .keyboardShortcut(.cancelAction)
             Button("Save Copy", action: onSave)
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(savesOnReturn ? .defaultAction : nil)
                 .disabled(!canSave)
         }
     }

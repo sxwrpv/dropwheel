@@ -89,6 +89,22 @@ public struct ToolService: Sendable {
             try await EditTools.trim(input, format: format, range: range, output: output, progress: progress)
         case (.trim, .trimSilence):
             try await EditTools.trimSilence(input, format: format, output: output, progress: progress)
+        case (.editPhoto, .photoEdit(let adjustments)):
+            try await PhotoTools.apply(input, format: format, output: output, keepMetadata: true) { image throws(ConversionError) in
+                try PhotoRendering.adjusted(image, adjustments)
+            }
+        case (.addBackground, .background(let recipe)):
+            try await PhotoTools.apply(input, format: format, output: output, keepMetadata: true) { image throws(ConversionError) in
+                try PhotoRendering.framed(image, recipe)
+            }
+        case (.annotate, .annotations(let annotations)):
+            try await PhotoTools.apply(input, format: format, output: output, keepMetadata: true) { image throws(ConversionError) in
+                try PhotoRendering.annotated(image, annotations)
+            }
+        case (.redactPhoto, .redactions(let regions)):
+            try await PhotoTools.apply(input, format: format, output: output, keepMetadata: false) { image throws(ConversionError) in
+                try PhotoRendering.redacted(image, regions)
+            }
         case (.joinVideos, _):
             try await MediaTools.join(inputs, output: output, progress: progress)
         default:
@@ -124,6 +140,10 @@ public struct ToolService: Sendable {
         case .joinVideos: return ("joined", FileFormat.mp4.preferredExtension)
         case .crop: return ("cropped", format.preferredExtension)
         case .trim: return ("trimmed", format.preferredExtension)
+        case .editPhoto: return ("edited", format.preferredExtension)
+        case .annotate: return ("annotated", format.preferredExtension)
+        case .addBackground: return ("framed", format.preferredExtension)
+        case .redactPhoto: return ("redacted", format.preferredExtension)
         }
     }
 

@@ -160,10 +160,12 @@ struct ImageConverter: Converter {
         }
     }
 
-    static func makeContext(width: Int, height: Int, opaque: Bool) -> CGContext? {
+    /// An 8-bit RGB context; `like` keeps that picture's colour space when it is RGB, else sRGB.
+    static func makeContext(width: Int, height: Int, opaque: Bool, like original: CGImage? = nil) -> CGContext? {
         let alpha: CGImageAlphaInfo = opaque ? .noneSkipLast : .premultipliedLast
+        let space = original?.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }
+            ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                         space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                         bitmapInfo: alpha.rawValue)
+                         space: space, bitmapInfo: alpha.rawValue)
     }
 }

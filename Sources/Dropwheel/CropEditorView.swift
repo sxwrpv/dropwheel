@@ -1,12 +1,10 @@
 import DropwheelCore
 import DropwheelEngines
-import ImageIO
 import SwiftUI
 
 /// Crop for images and video: drag the box or its corners, pick an aspect
 /// ratio, and (for images) optionally resize the result to exact pixels.
 struct CropEditorView: View {
-    private static let previewMaximumEdge = 2048
     private static let largestOutputEdge = 20_000
     /// 100 megapixels, matching the engine's limit.
     private static let largestOutputPixels = 100_000_000
@@ -56,7 +54,7 @@ struct CropEditorView: View {
     @ViewBuilder private var canvas: some View {
         if let preview, let pixelSize {
             GeometryReader { geometry in
-                let fitted = fittedSize(image: CGSize(width: pixelSize.width, height: pixelSize.height), in: geometry.size)
+                let fitted = PreviewImage.fittedSize(image: CGSize(width: pixelSize.width, height: pixelSize.height), in: geometry.size)
                 ZStack {
                     Image(decorative: preview, scale: 1)
                         .resizable()
@@ -142,7 +140,7 @@ struct CropEditorView: View {
                 pixelSize = info.rotatedSize ?? (frame.width, frame.height)
                 preview = frame
             } else {
-                let loaded = try Self.loadImage(url)
+                let loaded = try PreviewImage.load(url)
                 pixelSize = loaded.size
                 preview = loaded.image
             }
@@ -150,33 +148,6 @@ struct CropEditorView: View {
         } catch {
             loadError = error.localizedDescription
         }
-    }
-
-    /// An upright preview no larger than 2048 pixels, plus the real upright size.
-    private static func loadImage(_ url: URL) throws(ConversionError) -> (image: CGImage, size: (Int, Int)) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int else {
-            throw .unreadableInput(url.lastPathComponent)
-        }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: min(max(width, height), previewMaximumEdge),
-        ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            throw .unreadableInput(url.lastPathComponent)
-        }
-        // Orientations 5–8 turn the picture a quarter turn.
-        let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
-        return (image, orientation >= 5 ? (height, width) : (width, height))
-    }
-
-    private func fittedSize(image: CGSize, in space: CGSize) -> CGSize {
-        guard image.width > 0, image.height > 0 else { return .zero }
-        let scale = min(space.width / image.width, space.height / image.height)
-        return CGSize(width: image.width * scale, height: image.height * scale)
     }
 }
 
