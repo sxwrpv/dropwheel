@@ -11,7 +11,7 @@ struct ToolCatalogTests {
 
     @Test("Several images can also become one PDF")
     func severalImages() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto, .createPDF])
+        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto, .createPDF, .collage])
     }
 
     @Test("Several PDFs can be merged; one PDF cannot")
@@ -27,7 +27,8 @@ struct ToolCatalogTests {
 
     @Test("Video offers speed and split; several clips can be joined")
     func video() {
-        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo])
+        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo,
+                                                                .saveFrames, .redactVideo])
         #expect(ToolCatalog.tools(for: [.input(.mov), .input(.mp4)]).last == .joinVideos)
     }
 

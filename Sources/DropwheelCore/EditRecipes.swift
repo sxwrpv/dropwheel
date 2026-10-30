@@ -177,15 +177,26 @@ public enum EditPlans {
 
     /// Encoder settings for a crop: the picture is re-encoded, the sound copied as it is.
     public static func cropVideoOptions(_ rect: PixelRect, format: FileFormat) -> [String] {
-        let crop = "crop=\(rect.width):\(rect.height):\(rect.x):\(rect.y)"
+        // The crop replaces the format's even-size rule: its rect is already even.
+        videoOptions(filter: "crop=\(rect.width):\(rect.height):\(rect.x):\(rect.y)", keepingFormatFilter: false, format: format)
+    }
+
+    /// The format's video settings with `filter` as the picture filter
+    /// (followed by the format's own when `keepingFormatFilter`). Keeps the
+    /// first real picture track (not cover art) and every audio track, the
+    /// sound copied untouched.
+    static func videoOptions(filter: String?, keepingFormatFilter: Bool, format: FileFormat, extra: [String] = []) -> [String] {
         let audioSettings: Set<String> = ["-c:a", "-b:a", "-q:a"]
         let codec = FFmpegArguments.codecArguments(for: format)
         var options: [String] = []
+        var placedFilter = false
         var index = 0
         while index < codec.count {
             let flag = codec[index]
-            if flag == "-vf" {
-                options += ["-vf", crop]
+            if flag == "-vf", index + 1 < codec.count {
+                let combined = [filter, keepingFormatFilter ? codec[index + 1] : nil].compactMap { $0 }
+                if !combined.isEmpty { options += ["-vf", combined.joined(separator: ",")] }
+                placedFilter = true
                 index += 2
             } else if audioSettings.contains(flag) {
                 index += 2
@@ -194,8 +205,8 @@ public enum EditPlans {
                 index += 1
             }
         }
-        // Keep the picture and every audio track, not just ffmpeg's default one.
-        return ["-map", "0:v:0", "-map", "0:a?"] + options + ["-c:a", "copy"]
+        if !placedFilter, let filter { options += ["-vf", filter] }
+        return ["-map", "0:V:0", "-map", "0:a?"] + options + extra + ["-c:a", "copy"]
     }
 
     /// Seeking before the input with a re-encode cuts on the exact frame.

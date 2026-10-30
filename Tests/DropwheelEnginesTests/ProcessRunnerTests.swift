@@ -34,6 +34,31 @@ struct ProcessRunnerTests {
         #expect(ContinuousClock.now - started < .seconds(2))
     }
 
+    @Test("A tool that ignores the request to stop is killed")
+    func killsStubbornTool() async {
+        let started = ContinuousClock.now
+        let task = Task {
+            try await ProcessRunner.run(Self.shell, arguments: ["-c", "trap '' TERM; while :; do sleep 0.1; done"])
+        }
+        try? await Task.sleep(for: .milliseconds(300))
+        task.cancel()
+        await #expect(throws: ConversionError.cancelled) { try await task.value }
+        #expect(ContinuousClock.now - started < .seconds(6))
+    }
+
+    @Test("Stopping everything waits briefly, then kills what is still running")
+    func terminateAllKills() async {
+        let tag = "test-\(UUID().uuidString)"
+        let task = Task {
+            try await ProcessRunner.run(Self.shell, arguments: ["-c", "trap '' TERM; while :; do sleep 0.1; done"], tag: tag)
+        }
+        try? await Task.sleep(for: .milliseconds(300))
+        let started = ContinuousClock.now
+        ProcessRunner.terminateAll(tagged: tag)
+        await #expect(throws: ConversionError.cancelled) { try await task.value }
+        #expect(ContinuousClock.now - started < .seconds(6))
+    }
+
     @Test("A tool that runs past its time limit is stopped and reported")
     func timeout() async {
         let started = ContinuousClock.now

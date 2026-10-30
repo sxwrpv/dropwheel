@@ -2,8 +2,9 @@ import AppKit
 import DropwheelCore
 import SwiftUI
 
-/// Opens one editing window per file for tools such as Crop and Trim.
-/// Saving hands the chosen edit back, and the window closes.
+/// Opens editing windows for tools such as Crop and Trim: one per file, or
+/// one for the whole selection (Collage). Saving hands the chosen edit and
+/// the files it applies to back, and the window closes.
 @MainActor
 final class EditorWindows {
     private static let defaultSize = NSSize(width: 760, height: 560)
@@ -15,13 +16,15 @@ final class EditorWindows {
     private var windows: [UUID: NSWindow] = [:]
     private var closeObservers: [UUID: NSObjectProtocol] = [:]
 
-    func open(tool: ToolKind, url: URL, onSave: @escaping (ToolOptions) -> Void) {
+    func open(tool: ToolKind, urls: [URL], onSave: @escaping (ToolOptions, [URL]) -> Void) {
+        guard let url = urls.first else { return }
         let id = UUID()
         let isVideo = FileFormat(fileName: url.lastPathComponent)?.family == .video
-        let save: (ToolOptions) -> Void = { [weak self] options in
+        let saveFiles: (ToolOptions, [URL]) -> Void = { [weak self] options, files in
             self?.close(id)
-            onSave(options)
+            onSave(options, files)
         }
+        let save: (ToolOptions) -> Void = { saveFiles($0, urls) }
         let cancel: () -> Void = { [weak self] in self?.close(id) }
 
         let content: AnyView
@@ -37,7 +40,13 @@ final class EditorWindows {
         case .annotate:
             content = AnyView(AnnotateEditorView(url: url, onSave: save, onCancel: cancel))
         case .redactPhoto:
-            content = AnyView(RedactEditorView(url: url, onSave: save, onCancel: cancel))
+            content = AnyView(RedactEditorView(url: url, isVideo: false, onSave: save, onCancel: cancel))
+        case .redactVideo:
+            content = AnyView(RedactEditorView(url: url, isVideo: true, onSave: save, onCancel: cancel))
+        case .saveFrames:
+            content = AnyView(SaveFramesEditorView(url: url, onSave: save, onCancel: cancel))
+        case .collage:
+            content = AnyView(CollageEditorView(urls: urls, onSave: saveFiles, onCancel: cancel))
         default:
             return
         }
@@ -48,7 +57,7 @@ final class EditorWindows {
             backing: .buffered,
             defer: false
         )
-        window.title = "\(tool.title) — \(url.lastPathComponent)"
+        window.title = "\(tool.title) — \(urls.count == 1 ? url.lastPathComponent : "\(urls.count) files")"
         window.minSize = Self.minimumSize
         window.isReleasedWhenClosed = false
         // After a drop Finder is still frontmost; the window must stay visible regardless.

@@ -122,10 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Tools with choices ask first; the rest run straight away.
     private func runTool(_ kind: ToolKind, on urls: [URL]) {
         if kind.opensEditor {
-            // One editor per file; each saves its own copy.
-            for url in urls {
-                editors.open(tool: kind, url: url) { [weak self] options in
-                    self?.jobs.runTool(kind, on: [url], options: options)
+            // One editor per file, each saving its own copy, or one for the whole selection.
+            let groups = kind.usesWholeSelection ? [urls] : urls.map { [$0] }
+            for group in groups {
+                editors.open(tool: kind, urls: group) { [weak self] options, files in
+                    self?.jobs.runTool(kind, on: files, options: options)
                 }
             }
             return

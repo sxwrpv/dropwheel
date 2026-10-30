@@ -103,8 +103,18 @@ public struct ToolService: Sendable {
             }
         case (.redactPhoto, .redactions(let regions)):
             try await PhotoTools.apply(input, format: format, output: output, keepMetadata: false) { image throws(ConversionError) in
-                try PhotoRendering.redacted(image, regions)
+                // A copy named "redacted" must hide something.
+                guard regions.contains(where: { !PhotoRendering.pixelBounds($0.rect, width: image.width, height: image.height).isEmpty }) else {
+                    throw .nothingToHide(input.lastPathComponent)
+                }
+                return try PhotoRendering.redacted(image, regions)
             }
+        case (.collage, .collage(let recipe)):
+            try await MediaEditTools.collage(inputs, format: format, recipe: recipe, output: output, progress: progress)
+        case (.saveFrames, .frames(let export)):
+            try await MediaEditTools.saveFrames(input, export: export, output: output, progress: progress)
+        case (.redactVideo, .videoRedactions(let regions)):
+            try await MediaEditTools.redactVideo(input, format: format, regions: regions, output: output, progress: progress)
         case (.joinVideos, _):
             try await MediaTools.join(inputs, output: output, progress: progress)
         default:
@@ -143,7 +153,12 @@ public struct ToolService: Sendable {
         case .editPhoto: return ("edited", format.preferredExtension)
         case .annotate: return ("annotated", format.preferredExtension)
         case .addBackground: return ("framed", format.preferredExtension)
-        case .redactPhoto: return ("redacted", format.preferredExtension)
+        case .redactPhoto, .redactVideo: return ("redacted", format.preferredExtension)
+        case .collage: return ("collage", format.preferredExtension)
+        case .saveFrames:
+            guard case .frames(let export) = options else { return ("frames", nil) }
+            if case .every = export.plan { return (export.suffix, nil) }
+            return (export.suffix, export.format.fileFormat.preferredExtension)
         }
     }
 

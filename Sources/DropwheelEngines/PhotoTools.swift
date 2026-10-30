@@ -221,12 +221,9 @@ public enum PhotoRendering {
         return try render(result.cropped(to: CGRect(x: 0, y: 0, width: image.width, height: image.height)), like: image)
     }
 
-    /// Cell size in pixels for hiding an area: half its shorter side, so a
-    /// line of text is at most two cells tall, with a floor for tiny areas.
-    /// Both terms grow with the picture, so a preview hides exactly as much
-    /// as the full-size copy.
+    /// The shared cell rule (see `RedactionRegion.cellSize`), in pixels.
     static func redactionCell(for area: CGRect, imageShortEdge: CGFloat) -> CGFloat {
-        max(min(area.width, area.height) / 2, imageShortEdge * 0.01)
+        RedactionRegion.cellSize(areaWidth: area.width, areaHeight: area.height, imageShortEdge: imageShortEdge)
     }
 
     /// Pixellate keeps one sample per cell, which can still show fine detail;

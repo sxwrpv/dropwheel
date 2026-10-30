@@ -117,12 +117,28 @@ public enum MediaPreview {
         return collector.lines.lazy.compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.first
     }
 
-    /// The video frame shown at `seconds`, as displayed (rotation applied).
+    /// The video frame shown at `seconds`, as displayed (rotation applied),
+    /// in the pixels it is stored with.
     public static func frame(of url: URL, at seconds: Double) async throws(ConversionError) -> CGImage {
+        try await extractFrame(of: url, at: seconds, options: [])
+    }
+
+    /// The frame at `seconds` as it plays: rotated, with square pixels, from
+    /// the first real picture track (not cover art). `filter` runs first, in
+    /// the frame's stored pixels (as a saved copy's would); `maximumEdge`
+    /// keeps previews of 4K and 8K video small.
+    public static func displayFrame(of url: URL, at seconds: Double, filter: String? = nil,
+                                    maximumEdge: Int? = nil) async throws(ConversionError) -> CGImage {
+        let shrink = maximumEdge.map { "scale=w='min(iw,\($0))':h='min(ih,\($0))':force_original_aspect_ratio=decrease" }
+        let chain = [filter, EditPlans.squarePixels, shrink].compactMap { $0 }.joined(separator: ",")
+        return try await extractFrame(of: url, at: seconds, options: ["-map", "0:V:0", "-vf", chain])
+    }
+
+    private static func extractFrame(of url: URL, at seconds: Double, options: [String]) async throws(ConversionError) -> CGImage {
         let ffmpeg = try ToolLocator.require(.ffmpeg)
         let frameFile = FileManager.default.temporaryDirectory.appendingPathComponent("dropwheel-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: frameFile) }
-        let output = ["-frames:v", "1", "-an", "-y", frameFile.path]
+        let output = options + ["-frames:v", "1", "-an", "-y", frameFile.path]
         try await ProcessRunner.run(ffmpeg, arguments: ["-hide_banner", "-nostdin", "-v", "error",
                                                         "-ss", MediaToolPlans.number(max(seconds, 0)), "-i", url.path] + output)
         // Past the last picture (sound can run longer) ffmpeg writes nothing;

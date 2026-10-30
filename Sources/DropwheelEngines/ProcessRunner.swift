@@ -15,15 +15,30 @@ public enum ProcessRunner {
     /// Groups the processes `run` starts; only tests use anything but `standardTag`.
     static let standardTag = "dropwheel"
 
-    /// Stops every tool Dropwheel started. Child processes outlive their
-    /// parent on macOS, so the app calls this when it quits.
+    /// How long a tool gets to stop after being asked before it is killed.
+    /// ffmpeg only checks for the request between frames, and one frame of
+    /// a heavy filter can take much longer.
+    static let killGrace: TimeInterval = 2
+
+    /// Stops every tool Dropwheel started, killing any still running after
+    /// the grace period. Child processes outlive their parent on macOS, so
+    /// the app calls this when it quits; it blocks until they are gone.
     public static func terminateAll() {
-        RunningProcesses.shared.all().forEach { $0.terminate() }
+        stop(RunningProcesses.shared.all())
     }
 
     /// Stops only the tools started with `tag`.
     static func terminateAll(tagged tag: String) {
-        RunningProcesses.shared.all().filter { $0.tag == tag }.forEach { $0.terminate() }
+        stop(RunningProcesses.shared.all().filter { $0.tag == tag })
+    }
+
+    private static func stop(_ processes: [RunningProcess]) {
+        processes.forEach { $0.terminate() }
+        let deadline = Date(timeIntervalSinceNow: killGrace)
+        while processes.contains(where: \.isRunning), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        processes.forEach { $0.kill() }
     }
 
     /// `timeout` stops a tool that hangs, for example on a dialog it can't
@@ -102,13 +117,15 @@ private final class RunningProcess: @unchecked Sendable {
         self.onLine = onLine
     }
 
+    var isRunning: Bool { process.isRunning }
+
     /// Safe to call at any time: before launch it prevents the launch.
     func terminate() {
         let launched = lock.withLock {
             wasCancelled = true
             return hasLaunched
         }
-        if launched { process.terminate() }
+        if launched { stopTool() }
     }
 
     /// Called by the watchdog when the time limit passes.
@@ -117,7 +134,22 @@ private final class RunningProcess: @unchecked Sendable {
             hasTimedOut = true
             return hasLaunched
         }
-        if launched { process.terminate() }
+        if launched { stopTool() }
+    }
+
+    /// Asks the tool to stop, and kills it if it is still running after the grace period.
+    private func stopTool() {
+        process.terminate()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + ProcessRunner.killGrace) { [weak self] in
+            self?.kill()
+        }
+    }
+
+    /// Kills the tool if it is still running. Checking first means a finished
+    /// tool's process number, which the system may reuse, is never signalled.
+    func kill() {
+        guard process.isRunning else { return }
+        Darwin.kill(process.processIdentifier, SIGKILL)
     }
 
     func runToCompletion() async throws(ConversionError) -> String {

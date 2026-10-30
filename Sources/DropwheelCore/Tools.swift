@@ -14,7 +14,10 @@ public enum ToolKind: String, CaseIterable, Sendable {
     case audioChannels
     case changeSpeed
     case splitVideo
+    case saveFrames
+    case redactVideo
     case createPDF
+    case collage
     case mergePDFs
     case joinVideos
 
@@ -32,6 +35,9 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .audioChannels: "Audio Channels"
         case .changeSpeed: "Change Speed"
         case .splitVideo: "Split Video"
+        case .saveFrames: "Save Frames"
+        case .redactVideo: "Redact Video"
+        case .collage: "Collage"
         case .createPDF: "Create PDF"
         case .mergePDFs: "Merge PDFs"
         case .joinVideos: "Join Videos"
@@ -53,6 +59,9 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .audioChannels: "CHANNELS"
         case .changeSpeed: "SPEED"
         case .splitVideo: "SPLIT"
+        case .saveFrames: "FRAMES"
+        case .redactVideo: "REDACT"
+        case .collage: "COLLAGE"
         case .createPDF: "PDF"
         case .mergePDFs: "MERGE"
         case .joinVideos: "JOIN"
@@ -73,6 +82,9 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .audioChannels: "hifispeaker.2"
         case .changeSpeed: "speedometer"
         case .splitVideo: "scissors"
+        case .saveFrames: "photo.on.rectangle"
+        case .redactVideo: "eye.slash.circle"
+        case .collage: "square.grid.2x2"
         case .createPDF: "doc.badge.plus"
         case .mergePDFs: "doc.on.doc"
         case .joinVideos: "film.stack"
@@ -84,14 +96,14 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress, .normalizeVolume, .audioChannels, .changeSpeed, .splitVideo: true
         case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto: false
+             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: false
         }
     }
 
     /// Tools that open an editing window, one per file, instead of running straight away.
     public var opensEditor: Bool {
         switch self {
-        case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto: true
+        case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: true
         default: false
         }
     }
@@ -99,7 +111,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
     /// Tools that turn the whole selection into one result, rather than
     /// running once per file.
     public var usesWholeSelection: Bool {
-        self == .createPDF || self == .mergePDFs || self == .joinVideos
+        self == .createPDF || self == .mergePDFs || self == .joinVideos || self == .collage
     }
 }
 
@@ -122,8 +134,8 @@ public enum ToolCatalog {
             shared.intersection(singleFileTools(for: format))
         }
         var available = shared
-        if formats.count > 1, let combining = wholeSelectionTool(for: formats) {
-            available.insert(combining)
+        if formats.count > 1 {
+            available.formUnion(wholeSelectionTools(for: formats))
         }
         return ToolKind.allCases.filter(available.contains)
     }
@@ -134,16 +146,19 @@ public enum ToolCatalog {
             ? [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto] : []
         case .pdf: [.compress, .removeMetadata]
         case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels]
-        case .video: format == .gif ? [] : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo]
+        case .video: format == .gif ? []
+            : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo, .saveFrames, .redactVideo]
         default: []
         }
     }
 
-    private static func wholeSelectionTool(for formats: [FileFormat]) -> ToolKind? {
-        if formats.allSatisfy({ $0.family == .image && $0 != .svg }) { return .createPDF }
-        if formats.allSatisfy({ $0 == .pdf }) { return .mergePDFs }
-        if formats.allSatisfy({ $0.family == .video && $0 != .gif }) { return .joinVideos }
-        return nil
+    private static func wholeSelectionTools(for formats: [FileFormat]) -> Set<ToolKind> {
+        if formats.allSatisfy({ $0.family == .image && $0 != .svg }) {
+            return formats.count <= CollageRecipe.maximumImages ? [.createPDF, .collage] : [.createPDF]
+        }
+        if formats.allSatisfy({ $0 == .pdf }) { return [.mergePDFs] }
+        if formats.allSatisfy({ $0.family == .video && $0 != .gif }) { return [.joinVideos] }
+        return []
     }
 }
 
@@ -227,6 +242,10 @@ public enum ToolOptions: Equatable, Sendable {
     case background(BackgroundRecipe)
     case annotations([Annotation])
     case redactions([RedactionRegion])
+    case collage(CollageRecipe)
+    case frames(FrameExport)
+    /// Boxes hidden for the whole length of a video.
+    case videoRedactions([RedactionRegion])
 
     public static let speedChoices: [Double] = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 4]
 
@@ -238,7 +257,7 @@ public enum ToolOptions: Equatable, Sendable {
         case .audioChannels: .channels(.mono)
         case .normalizeVolume: .loudness(.podcast)
         case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto: .none
+             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: .none
         }
     }
 }

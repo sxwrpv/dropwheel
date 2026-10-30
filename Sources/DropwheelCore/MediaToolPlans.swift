@@ -118,7 +118,7 @@ public enum MediaToolPlans {
         for (index, clip) in clips.enumerated() {
             // Square any anamorphic pixels first, so the fit below sees the displayed shape.
             graph.append("[\(index):v]scale=iw*sar:ih,setsar=1,scale=\(width):\(height):force_original_aspect_ratio=decrease,"
-                + "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,fps=\(number(framesPerSecond)),format=yuv420p[v\(index)]")
+                + "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,fps=\(rate(framesPerSecond)),format=yuv420p[v\(index)]")
             let audioSource: String
             if clip.hasAudio {
                 audioSource = "[\(index):a]"
@@ -157,8 +157,23 @@ public enum MediaToolPlans {
     }
 
     /// "2" rather than "2.0", so filter strings and file names stay tidy.
+    /// Always plain decimals to the microsecond, ffmpeg's finest time step:
+    /// it refuses exponent forms such as 1.4e-17. Not-a-number and infinity,
+    /// never valid in an argument, become 0.
     public static func number(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(value)
+        guard value.isFinite else { return "0" }
+        var text = String(format: "%.6f", value)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text.removeLast() }
+        return text == "-0" ? "0" : text
+    }
+
+    /// A frame rate with every digit Swift needs to give back the same value,
+    /// so ffmpeg can recover exact rates such as 30000/1001 (29.97…).
+    /// Rounding it would leave odd rates such as 2997003/100000.
+    public static func rate(_ value: Double) -> String {
+        guard value.isFinite, value >= 1e-3, value < 1e9 else { return number(value) }
+        return value == value.rounded() ? String(Int(value)) : String(value)
     }
 
     /// "2x", "0.5x": used in the names of speed-changed copies.

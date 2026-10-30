@@ -13,6 +13,11 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
     case nothingToSplit(String)
     case multiFrame(String)
     case invalidTrim(String)
+    /// A redaction whose boxes cover nothing.
+    case nothingToHide(String)
+    case invalidFrames(String)
+    /// The file doesn't record how long it is.
+    case unknownLength(String)
     case toolUnavailable(tool: String, input: String)
     case toolFailed(tool: String, message: String)
     case writeFailed(String)
@@ -30,6 +35,12 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
             "\(name) couldn’t be read. It may be damaged or in an unexpected format."
         case .invalidTrim(let name):
             "Choose a part of \(name) that is inside the recording and shorter than all of it."
+        case .nothingToHide(let name):
+            "Draw at least one box over the part of \(name) to hide."
+        case .invalidFrames(let name):
+            "Choose a frame inside \(name), or an interval that gives 2 to \(FrameExport.maximumFrames) frames."
+        case .unknownLength(let name):
+            "\(name) doesn’t record how long it is, so its frames can’t be picked."
         case .multiFrame(let name):
             "\(name) has several pages or frames. This tool works on single images only."
         case .nothingToSplit(let name):

@@ -2,52 +2,82 @@ import DropwheelCore
 import DropwheelEngines
 import SwiftUI
 
-/// Redact: hide parts of a picture behind a solid box, a blur or pixels.
-/// Drag to add a box, click a box to remove it, or let Vision find faces
-/// and text.
+/// Redact for photos and videos: hide parts of a picture behind a solid
+/// box, a blur or pixels. Drag to add a box, click a box to remove it, or
+/// let Vision find faces (and, in photos, text). In a video the boxes stay
+/// in place for its whole length; the scrubber shows them over any frame.
 struct RedactEditorView: View {
     /// Larger than the other editors' previews, so Vision can read small text.
     private static let previewEdge = 2048
+    /// Pointer travel, as a share of the picture, that makes a drag rather than a click.
     private static let smallestDrag = 0.005
+    /// A box needs some width and height, or it would hide nothing.
+    private static let smallestSide = 0.004
     private static let renderDebounce: Duration = .milliseconds(30)
 
+    /// What the preview shows: these boxes over this picture.
+    private struct RenderKey: Equatable {
+        let regions: [RedactionRegion]
+        let picture: ObjectIdentifier?
+    }
+
     let url: URL
+    let isVideo: Bool
     let onSave: (ToolOptions) -> Void
     let onCancel: () -> Void
 
-    @State private var original: CGImage?
+    @StateObject private var video: VideoFrameModel
+    @State private var photo: CGImage?
+    @State private var photoError: String?
     @State private var rendered: CGImage?
-    @State private var loadError: String?
     @State private var regions: [RedactionRegion] = []
     @State private var draft: RedactionRegion?
     @State private var style = RedactionStyle.solid
     @State private var searching = false
     @State private var note: String?
 
+    init(url: URL, isVideo: Bool, onSave: @escaping (ToolOptions) -> Void, onCancel: @escaping () -> Void) {
+        self.url = url
+        self.isVideo = isVideo
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _video = StateObject(wrappedValue: VideoFrameModel(url: url, maximumEdge: Self.previewEdge))
+    }
+
+    private var original: CGImage? { isVideo ? video.frame : photo }
+    private var loadError: String? { isVideo ? video.loadError : photoError }
+
     var body: some View {
         VStack(spacing: 12) {
             toolbar
             canvas
+            if isVideo {
+                VideoScrubberBar(model: video)
+            }
             // Saving mid-search would leave out whatever the search is about to find.
             EditorFooter(canSave: original != nil && !regions.isEmpty && !searching, onCancel: onCancel,
-                         onSave: { onSave(.redactions(regions)) }) {
+                         onSave: { onSave(isVideo ? .videoRedactions(regions) : .redactions(regions)) }) {
                 HStack(spacing: 8) {
-                    Button("Undo") { regions = Array(regions.dropLast()) }
+                    Button("Undo") { change(Array(regions.dropLast())) }
                         .keyboardShortcut("z", modifiers: .command)
                         .disabled(regions.isEmpty)
-                    Button("Clear") { regions = [] }
+                    Button("Clear") { change([]) }
                         .disabled(regions.isEmpty)
-                    if let note {
-                        Text(note).font(.callout).foregroundStyle(.secondary)
-                    }
+                    Text(footnote).font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
         .padding(16)
-        .task { await load() }
+        .task {
+            if isVideo {
+                await video.load()
+            } else {
+                await loadPhoto()
+            }
+        }
         // Blurs are slow at full preview size, so committed boxes render off
         // the main thread; a box being dragged shows as an outline until then.
-        .task(id: regions) {
+        .task(id: RenderKey(regions: regions, picture: original.map(ObjectIdentifier.init))) {
             try? await Task.sleep(for: Self.renderDebounce)
             guard !Task.isCancelled else { return }
             await render()
@@ -56,6 +86,7 @@ struct RedactEditorView: View {
         .onChange(of: style) { newStyle in
             regions = regions.map { RedactionRegion(id: $0.id, rect: $0.rect, style: newStyle) }
         }
+        .onDisappear { video.stop() }
     }
 
     private var toolbar: some View {
@@ -69,8 +100,11 @@ struct RedactEditorView: View {
             if searching { ProgressView().controlSize(.small) }
             Button { find(.faces) } label: { Label("Find Faces", systemImage: "person.crop.square") }
                 .disabled(original == nil || searching)
-            Button { find(.text) } label: { Label("Find Text", systemImage: "text.viewfinder") }
-                .disabled(original == nil || searching)
+                .help(isVideo ? "Box the faces in the frame shown" : "Box every face in the photo")
+            if !isVideo {
+                Button { find(.text) } label: { Label("Find Text", systemImage: "text.viewfinder") }
+                    .disabled(original == nil || searching)
+            }
         }
     }
 
@@ -93,21 +127,47 @@ struct RedactEditorView: View {
         }
     }
 
+    /// The reminder that video boxes don't follow anything, plus the latest
+    /// search result and any boxes drawn solid because they overlap too deeply.
+    private var footnote: String {
+        var parts = note.map { [$0] } ?? []
+        if isVideo {
+            parts.append("Boxes stay in place for the whole video")
+            if let size = video.info?.rotatedSize {
+                let solid = VideoRedaction.solidFallbackCount(regions, width: size.width, height: size.height)
+                if solid > 0 { parts.append("\(solid) deeply overlapping \(solid == 1 ? "box is" : "boxes are") drawn solid") }
+            }
+        }
+        return parts.joined(separator: " · ")
+    }
+
     // MARK: Editing
 
     private func dragged(from start: NormalizedPoint, to current: NormalizedPoint) {
-        guard hypot(current.x - start.x, current.y - start.y) >= Self.smallestDrag else { return }
-        draft = RedactionRegion(id: draft?.id ?? UUID(), rect: AnnotationGeometry.rect(from: start, to: current), style: style)
+        let rect = AnnotationGeometry.rect(from: start, to: current)
+        // A drag along an edge has no height (or width) and would hide nothing.
+        guard rect.width >= Self.smallestSide, rect.height >= Self.smallestSide else {
+            draft = nil
+            return
+        }
+        draft = RedactionRegion(id: draft?.id ?? UUID(), rect: rect, style: style)
     }
 
     /// A drag adds its box; a click on a box removes that box.
     private func dragEnded(from start: NormalizedPoint, to end: NormalizedPoint) {
+        let moved = hypot(end.x - start.x, end.y - start.y) >= Self.smallestDrag
         if let draft {
-            regions = regions + [draft]
-        } else if let hit = regions.last(where: { contains($0.rect, end) }) {
-            regions = regions.filter { $0.id != hit.id }
+            change(regions + [draft])
+        } else if !moved, let hit = regions.last(where: { contains($0.rect, end) }) {
+            change(regions.filter { $0.id != hit.id })
         }
         draft = nil
+    }
+
+    /// A change by hand also clears the last search's note, which no longer describes the boxes.
+    private func change(_ newRegions: [RedactionRegion]) {
+        regions = newRegions
+        note = nil
     }
 
     private func contains(_ rect: CropRecipe, _ point: NormalizedPoint) -> Bool {
@@ -148,10 +208,20 @@ struct RedactEditorView: View {
 
     private func render() async {
         guard let original else { return }
+        // Nothing to hide: show the picture as it is.
+        guard !regions.isEmpty else {
+            rendered = nil
+            return
+        }
         let regions = regions
-        let result = await Task.detached(priority: .userInitiated) {
-            Result { () throws(ConversionError) in try PhotoRendering.redacted(original, regions) }
-        }.value
+        let result: Result<CGImage, ConversionError>
+        if isVideo {
+            result = await renderedVideoFrame(regions)
+        } else {
+            result = await Task.detached(priority: .userInitiated) {
+                Result { () throws(ConversionError) in try PhotoRendering.redacted(original, regions) }
+            }.value
+        }
         guard !Task.isCancelled else { return }
         switch result {
         case .success(let image): rendered = image
@@ -162,10 +232,24 @@ struct RedactEditorView: View {
         }
     }
 
-    private func load() async {
+    /// The frame shown, redacted by ffmpeg with the very filter the saved
+    /// copy uses, so the preview matches it. Runs in this task, so a newer
+    /// edit or frame cancels it and stops ffmpeg.
+    private func renderedVideoFrame(_ regions: [RedactionRegion]) async -> Result<CGImage, ConversionError> {
+        guard let size = video.info?.rotatedSize else { return .failure(.unreadableInput(url.lastPathComponent)) }
+        let filter = VideoRedaction.filter(regions, width: size.width, height: size.height)
+        do {
+            return .success(try await MediaPreview.displayFrame(of: url, at: video.time, filter: filter,
+                                                                maximumEdge: Self.previewEdge))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func loadPhoto() async {
         switch await PreviewImage.loadInBackground(url, maximumEdge: Self.previewEdge) {
-        case .success(let loaded): original = loaded.image
-        case .failure(let error): loadError = error.localizedDescription
+        case .success(let loaded): photo = loaded.image
+        case .failure(let error): photoError = error.localizedDescription
         }
     }
 }

@@ -12,7 +12,7 @@ struct ImageConverter: Converter {
     private static let svgMinimumLongEdge: CGFloat = 1024
     /// and never larger than this, to bound memory for huge drawings.
     private static let svgMaximumLongEdge: CGFloat = 8192
-    private static let defaultDPI = 72.0
+    static let defaultDPI = 72.0
 
     func convert(_ input: URL, to target: FileFormat, output: URL, progress: @escaping ProgressHandler) async throws(ConversionError) {
         progress(0)
