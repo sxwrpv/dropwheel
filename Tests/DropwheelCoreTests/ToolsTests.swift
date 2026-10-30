@@ -22,7 +22,8 @@ struct ToolCatalogTests {
 
     @Test("Audio offers loudness and channel tools")
     func audio() {
-        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels])
+        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels,
+                                                                .bleep, .visualizer])
     }
 
     @Test("Video offers speed and split; several clips can be joined")

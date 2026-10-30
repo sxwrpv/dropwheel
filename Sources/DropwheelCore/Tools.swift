@@ -12,6 +12,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
     case trim
     case normalizeVolume
     case audioChannels
+    case bleep
+    case visualizer
     case changeSpeed
     case splitVideo
     case saveFrames
@@ -33,6 +35,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .trim: "Trim"
         case .normalizeVolume: "Normalize Volume"
         case .audioChannels: "Audio Channels"
+        case .bleep: "Bleep Audio"
+        case .visualizer: "Audio Visualizer"
         case .changeSpeed: "Change Speed"
         case .splitVideo: "Split Video"
         case .saveFrames: "Save Frames"
@@ -57,6 +61,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .trim: "TRIM"
         case .normalizeVolume: "NORMALIZE"
         case .audioChannels: "CHANNELS"
+        case .bleep: "BLEEP"
+        case .visualizer: "VISUALIZER"
         case .changeSpeed: "SPEED"
         case .splitVideo: "SPLIT"
         case .saveFrames: "FRAMES"
@@ -80,6 +86,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .trim: "timeline.selection"
         case .normalizeVolume: "speaker.wave.3"
         case .audioChannels: "hifispeaker.2"
+        case .bleep: "waveform.slash"
+        case .visualizer: "waveform.circle"
         case .changeSpeed: "speedometer"
         case .splitVideo: "scissors"
         case .saveFrames: "photo.on.rectangle"
@@ -96,14 +104,15 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress, .normalizeVolume, .audioChannels, .changeSpeed, .splitVideo: true
         case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: false
+             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage, .bleep, .visualizer: false
         }
     }
 
     /// Tools that open an editing window, one per file, instead of running straight away.
     public var opensEditor: Bool {
         switch self {
-        case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: true
+        case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage,
+             .bleep, .visualizer: true
         default: false
         }
     }
@@ -145,7 +154,7 @@ public enum ToolCatalog {
         case .image: compressibleImages.contains(format)
             ? [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto] : []
         case .pdf: [.compress, .removeMetadata]
-        case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels]
+        case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels, .bleep, .visualizer]
         case .video: format == .gif ? []
             : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo, .saveFrames, .redactVideo]
         default: []
@@ -246,6 +255,8 @@ public enum ToolOptions: Equatable, Sendable {
     case frames(FrameExport)
     /// Boxes hidden for the whole length of a video.
     case videoRedactions([RedactionRegion])
+    case bleep(BleepRecipe)
+    case visualizer(VisualizerRecipe)
 
     public static let speedChoices: [Double] = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 4]
 
@@ -257,7 +268,7 @@ public enum ToolOptions: Equatable, Sendable {
         case .audioChannels: .channels(.mono)
         case .normalizeVolume: .loudness(.podcast)
         case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage: .none
+             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage, .bleep, .visualizer: .none
         }
     }
 }

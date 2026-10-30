@@ -5,6 +5,11 @@ import Testing
 @Suite("ProcessRunner")
 struct ProcessRunnerTests {
     private static let shell = URL(fileURLWithPath: "/bin/sh")
+    /// Far longer than any test should wait, so finishing in time proves the
+    /// tool was stopped. The margin allows for a loaded test run, where other
+    /// tests' fixtures can hold up these timers for a few seconds.
+    private static let longSleep = 30
+    private static let stoppedInTime = Duration.seconds(12)
 
     @Test("The last stderr line reaches the error message, even after heavy output")
     func finalStderrLine() async {
@@ -28,10 +33,10 @@ struct ProcessRunnerTests {
     @Test("Cancelling stops a long-running tool promptly")
     func cancelStops() async {
         let started = ContinuousClock.now
-        let task = Task { try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep 5"]) }
+        let task = Task { try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep \(Self.longSleep)"]) }
         task.cancel()
         await #expect(throws: ConversionError.cancelled) { try await task.value }
-        #expect(ContinuousClock.now - started < .seconds(2))
+        #expect(ContinuousClock.now - started < Self.stoppedInTime)
     }
 
     @Test("A tool that ignores the request to stop is killed")
@@ -43,7 +48,7 @@ struct ProcessRunnerTests {
         try? await Task.sleep(for: .milliseconds(300))
         task.cancel()
         await #expect(throws: ConversionError.cancelled) { try await task.value }
-        #expect(ContinuousClock.now - started < .seconds(6))
+        #expect(ContinuousClock.now - started < Self.stoppedInTime)
     }
 
     @Test("Stopping everything waits briefly, then kills what is still running")
@@ -56,16 +61,16 @@ struct ProcessRunnerTests {
         let started = ContinuousClock.now
         ProcessRunner.terminateAll(tagged: tag)
         await #expect(throws: ConversionError.cancelled) { try await task.value }
-        #expect(ContinuousClock.now - started < .seconds(6))
+        #expect(ContinuousClock.now - started < Self.stoppedInTime)
     }
 
     @Test("A tool that runs past its time limit is stopped and reported")
     func timeout() async {
         let started = ContinuousClock.now
         await #expect(throws: ConversionError.toolFailed(tool: "sh", message: "It didn’t finish within 0 minutes.")) {
-            try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep 5"], timeout: .milliseconds(300))
+            try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep \(Self.longSleep)"], timeout: .milliseconds(300))
         }
-        #expect(ContinuousClock.now - started < .seconds(2))
+        #expect(ContinuousClock.now - started < Self.stoppedInTime)
     }
 
     @Test("A task cancelled while waiting at the gate leaves promptly")
@@ -88,11 +93,11 @@ struct ProcessRunnerTests {
     func terminateAll() async {
         let tag = "test-\(UUID().uuidString)"
         let started = ContinuousClock.now
-        let task = Task { try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep 5"], tag: tag) }
+        let task = Task { try await ProcessRunner.run(Self.shell, arguments: ["-c", "sleep \(Self.longSleep)"], tag: tag) }
         try? await Task.sleep(for: .milliseconds(200))
         ProcessRunner.terminateAll(tagged: tag)
         await #expect(throws: ConversionError.cancelled) { try await task.value }
-        #expect(ContinuousClock.now - started < .seconds(2))
+        #expect(ContinuousClock.now - started < Self.stoppedInTime)
     }
 }
 

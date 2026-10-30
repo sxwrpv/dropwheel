@@ -115,6 +115,10 @@ public struct ToolService: Sendable {
             try await MediaEditTools.saveFrames(input, export: export, output: output, progress: progress)
         case (.redactVideo, .videoRedactions(let regions)):
             try await MediaEditTools.redactVideo(input, format: format, regions: regions, output: output, progress: progress)
+        case (.bleep, .bleep(let recipe)):
+            try await AudioEditTools.bleep(input, format: format, recipe: recipe, output: output, progress: progress)
+        case (.visualizer, .visualizer(let recipe)):
+            try await AudioEditTools.visualize(input, recipe: recipe, output: output, progress: progress)
         case (.joinVideos, _):
             try await MediaTools.join(inputs, output: output, progress: progress)
         default:
@@ -154,6 +158,8 @@ public struct ToolService: Sendable {
         case .annotate: return ("annotated", format.preferredExtension)
         case .addBackground: return ("framed", format.preferredExtension)
         case .redactPhoto, .redactVideo: return ("redacted", format.preferredExtension)
+        case .bleep: return ("bleeped", format.preferredExtension)
+        case .visualizer: return ("visualizer", FileFormat.mp4.preferredExtension)
         case .collage: return ("collage", format.preferredExtension)
         case .saveFrames:
             guard case .frames(let export) = options else { return ("frames", nil) }

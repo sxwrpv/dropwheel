@@ -92,18 +92,48 @@ public enum MediaPreview {
 
     /// One peak per bucket across the whole recording, from 0 to 1.
     public static func waveform(of url: URL, buckets: Int) async throws(ConversionError) -> [Float] {
+        peaks(of: try await decodedSamples(of: url, track: []), buckets: buckets)
+    }
+
+    /// The first audio track's real length and its peaks, about
+    /// `bucketsPerSecond` of them up to `maximumBuckets`.
+    public static func timeline(of url: URL, bucketsPerSecond: Int,
+                                maximumBuckets: Int) async throws(ConversionError) -> AudioTimeline {
+        let samples = try await decodedSamples(of: url, track: ["-map", "0:a:0"])
+        let seconds = try length(of: samples, in: url)
+        let buckets = max(min(Int((seconds * Double(bucketsPerSecond)).rounded()), maximumBuckets), 1)
+        return AudioTimeline(seconds: seconds, peaks: peaks(of: samples, buckets: buckets))
+    }
+
+    /// The first audio track's real length, from decoding it.
+    static func decodedSeconds(of url: URL) async throws(ConversionError) -> Double {
+        try length(of: try await decodedSamples(of: url, track: ["-map", "0:a:0"]), in: url)
+    }
+
+    private static func length(of samples: Data, in url: URL) throws(ConversionError) -> Double {
+        let seconds = Double(samples.count / MemoryLayout<Float>.size) / Double(waveformSampleRate)
+        guard seconds > 0 else { throw .unreadableInput(url.lastPathComponent) }
+        return seconds
+    }
+
+    private static func peaks(of samples: Data, buckets: Int) -> [Float] {
+        samples.withUnsafeBytes { bytes in
+            Waveform.peaks(of: bytes.bindMemory(to: Float.self), buckets: buckets).map { min($0, 1) }
+        }
+    }
+
+    /// The sound as mono samples. They stay memory-mapped, not copied; the
+    /// mapping outlives the temporary file, which is removed straight away.
+    private static func decodedSamples(of url: URL, track: [String]) async throws(ConversionError) -> Data {
         let ffmpeg = try ToolLocator.require(.ffmpeg)
-        let samplesFile = FileManager.default.temporaryDirectory.appendingPathComponent("dropwheel-\(UUID().uuidString).f32")
-        defer { try? FileManager.default.removeItem(at: samplesFile) }
-        try await ProcessRunner.run(ffmpeg, arguments: ["-hide_banner", "-nostdin", "-v", "error", "-i", url.path,
-                                                        "-vn", "-ac", "1", "-ar", "\(waveformSampleRate)", "-f", "f32le", "-y",
-                                                        samplesFile.path])
+        let samplesFile = temporaryFile(extension: "f32")
+        defer { discardTemporaryFile(samplesFile) }
+        try await ProcessRunner.run(ffmpeg, arguments: ["-hide_banner", "-nostdin", "-v", "error", "-i", url.path] + track
+            + ["-vn", "-ac", "1", "-ar", "\(waveformSampleRate)", "-f", "f32le", "-y", samplesFile.path])
         guard let data = try? Data(contentsOf: samplesFile, options: .alwaysMapped) else {
             throw .unreadableInput(url.lastPathComponent)
         }
-        return data.withUnsafeBytes { bytes in
-            Waveform.peaks(of: bytes.bindMemory(to: Float.self), buckets: buckets).map { min($0, 1) }
-        }
+        return data
     }
 
     /// Length of the picture track alone, which can be shorter than the file
@@ -136,8 +166,8 @@ public enum MediaPreview {
 
     private static func extractFrame(of url: URL, at seconds: Double, options: [String]) async throws(ConversionError) -> CGImage {
         let ffmpeg = try ToolLocator.require(.ffmpeg)
-        let frameFile = FileManager.default.temporaryDirectory.appendingPathComponent("dropwheel-\(UUID().uuidString).png")
-        defer { try? FileManager.default.removeItem(at: frameFile) }
+        let frameFile = temporaryFile(extension: "png")
+        defer { discardTemporaryFile(frameFile) }
         let output = options + ["-frames:v", "1", "-an", "-y", frameFile.path]
         try await ProcessRunner.run(ffmpeg, arguments: ["-hide_banner", "-nostdin", "-v", "error",
                                                         "-ss", MediaToolPlans.number(max(seconds, 0)), "-i", url.path] + output)
@@ -148,15 +178,28 @@ public enum MediaPreview {
                                                             "-ss", MediaToolPlans.number(max(pictureEnd - 0.1, 0)),
                                                             "-i", url.path] + output)
         }
-        // Read the file into memory and decode now: images decode lazily, and
-        // the temporary file is deleted as soon as this returns.
-        let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
-        guard FileManager.default.fileExists(atPath: frameFile.path),
-              let data = try? Data(contentsOf: frameFile),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, options) else {
-            throw .unreadableInput(url.lastPathComponent)
-        }
+        guard let image = decodedImage(at: frameFile) else { throw .unreadableInput(url.lastPathComponent) }
         return image
+    }
+
+    /// A path for a temporary file, removed at quit if nothing has by then.
+    static func temporaryFile(extension fileExtension: String) -> URL {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("dropwheel-\(UUID().uuidString).\(fileExtension)")
+        WorkInProgress.shared.add(file)
+        return file
+    }
+
+    static func discardTemporaryFile(_ file: URL) {
+        try? FileManager.default.removeItem(at: file)
+        WorkInProgress.shared.remove(file)
+    }
+
+    /// Reads the file into memory and decodes now: images decode lazily, and
+    /// callers delete their temporary files as soon as they return.
+    static func decodedImage(at file: URL) -> CGImage? {
+        let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+        guard let data = try? Data(contentsOf: file),
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, options)
     }
 }

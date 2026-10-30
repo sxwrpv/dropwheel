@@ -11,6 +11,8 @@ final class EditorWindows {
     /// Photo editors have a side panel or toolbar, so they open larger.
     private static let photoEditorSize = NSSize(width: 960, height: 640)
     private static let minimumSize = NSSize(width: 520, height: 400)
+    /// The narrowest these editors' rows of controls still fit.
+    private static let wideEditorMinimumSize = NSSize(width: 780, height: 520)
     private static let cascadeOffset: CGFloat = 28
 
     private var windows: [UUID: NSWindow] = [:]
@@ -47,6 +49,10 @@ final class EditorWindows {
             content = AnyView(SaveFramesEditorView(url: url, onSave: save, onCancel: cancel))
         case .collage:
             content = AnyView(CollageEditorView(urls: urls, onSave: saveFiles, onCancel: cancel))
+        case .bleep:
+            content = AnyView(BleepEditorView(url: url, onSave: save, onCancel: cancel))
+        case .visualizer:
+            content = AnyView(VisualizerEditorView(url: url, onSave: save, onCancel: cancel))
         default:
             return
         }
@@ -58,7 +64,7 @@ final class EditorWindows {
             defer: false
         )
         window.title = "\(tool.title) — \(urls.count == 1 ? url.lastPathComponent : "\(urls.count) files")"
-        window.minSize = Self.minimumSize
+        window.minSize = tool == .crop || tool == .trim ? Self.minimumSize : Self.wideEditorMinimumSize
         window.isReleasedWhenClosed = false
         // After a drop Finder is still frontmost; the window must stay visible regardless.
         window.hidesOnDeactivate = false

@@ -229,10 +229,11 @@ public enum Waveform {
         guard !samples.isEmpty, buckets > 0 else { return [] }
         guard samples.count > buckets else { return samples.map(abs) }
         let size = Double(samples.count) / Double(buckets)
+        let first = samples.startIndex
         return (0..<buckets).map { bucket in
             let lower = Int(Double(bucket) * size)
             let upper = min(samples.count, Int(Double(bucket + 1) * size))
-            return samples[lower..<max(upper, lower + 1)].map(abs).max() ?? 0
+            return samples[(first + lower)..<(first + max(upper, lower + 1))].reduce(0) { max($0, abs($1)) }
         }
     }
 }
