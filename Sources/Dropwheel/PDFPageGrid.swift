@@ -145,6 +145,7 @@ struct PDFPageGrid: NSViewRepresentable {
         func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
                             willBeginAt screenPoint: NSPoint, forItemsAt indexPaths: Set<IndexPath>) {
             dragged = ids(at: indexPaths)
+            self.collectionView.clickedInSelection = nil
         }
 
         func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
@@ -170,9 +171,35 @@ struct PDFPageGrid: NSViewRepresentable {
 
 final class PageCollectionView: NSCollectionView {
     var onDelete: (() -> Void)?
+    /// A plain click on one of several selected pages. It selects just that
+    /// page once the mouse comes up, unless it started a drag of them all.
+    var clickedInSelection: IndexPath?
 
     /// Finder usually stays frontmost after a drop; the first click should still select.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let clicked = indexPathForItem(at: convert(event.locationInWindow, from: nil))
+        let isPlainClick = event.modifierFlags.intersection([.shift, .command, .control]).isEmpty
+        clickedInSelection = isPlainClick && selectionIndexPaths.count > 1 ? clicked.flatMap { selectionIndexPaths.contains($0) ? $0 : nil } : nil
+        super.mouseDown(with: event)
+        // The collection view may follow the mouse until it is released.
+        if NSApp.currentEvent?.type == .leftMouseUp {
+            selectClickedPage()
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        selectClickedPage()
+    }
+
+    private func selectClickedPage() {
+        guard let clicked = clickedInSelection else { return }
+        clickedInSelection = nil
+        selectionIndexPaths = [clicked]
+        delegate?.collectionView?(self, didSelectItemsAt: [clicked])
+    }
 
     override func keyDown(with event: NSEvent) {
         let isDelete = event.specialKey == .delete || event.specialKey == .deleteForward

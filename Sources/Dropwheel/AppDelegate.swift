@@ -197,10 +197,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        let holder = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
-        holder.submenu = edit
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        editItem.submenu = edit
+        // The first menu is always the application's own, whatever it's called.
+        let appItem = NSMenuItem(title: "Dropwheel", action: nil, keyEquivalent: "")
+        appItem.submenu = NSMenu(title: "Dropwheel")
         let bar = NSMenu()
-        bar.addItem(holder)
+        bar.addItem(appItem)
+        bar.addItem(editItem)
         return bar
     }
 

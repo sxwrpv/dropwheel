@@ -132,6 +132,7 @@ struct MetadataEditorView: View {
         }
         .buttonStyle(.plain)
         .help("Remove \(field.label)")
+        .accessibilityLabel("Remove \(field.label)")
     }
 
     private func binding(for field: MetadataField) -> Binding<String> {
