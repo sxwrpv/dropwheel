@@ -264,7 +264,7 @@ enum ImageTools {
 
     /// Multi-page TIFFs and animated images would silently lose all but
     /// their first frame, so they are refused.
-    private static func requireSingleFrame(_ input: URL) throws(ConversionError) {
+    static func requireSingleFrame(_ input: URL) throws(ConversionError) {
         guard let source = CGImageSourceCreateWithURL(input as CFURL, nil) else { throw .unreadableInput(input.lastPathComponent) }
         if CGImageSourceGetCount(source) > 1 { throw .multiFrame(input.lastPathComponent) }
     }

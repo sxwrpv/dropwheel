@@ -121,6 +121,10 @@ public struct ToolService: Sendable {
             try await AudioEditTools.visualize(input, recipe: recipe, output: output, progress: progress)
         case (.joinVideos, _):
             try await MediaTools.join(inputs, output: output, progress: progress)
+        case (.organizePDF, .pdfPages(let pages)):
+            try PDFTools.organize(input, pages: pages, output: output)
+        case (.editMetadata, .metadata(let recipe)):
+            try await MetadataTools.edit(input, format: format, recipe: recipe, output: output, progress: progress)
         default:
             throw .toolUnavailable(tool: tool.title, input: input.lastPathComponent)
         }
@@ -141,6 +145,8 @@ public struct ToolService: Sendable {
             let output = format.family == .audio || format.family == .video ? MediaTools.compressedFormat(for: format) : format
             return ("compressed", output.preferredExtension)
         case .removeMetadata: return ("clean", format.preferredExtension)
+        case .editMetadata: return ("edited", format.preferredExtension)
+        case .organizePDF: return ("organized", format.preferredExtension)
         case .normalizeVolume: return ("normalized", format.preferredExtension)
         case .audioChannels:
             if case .channels(let layout) = options { return (layout.rawValue, format.preferredExtension) }

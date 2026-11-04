@@ -85,7 +85,7 @@ struct FilePathsTests {
     @Test("Tools wheel lists the tools for the selection")
     func toolCatalog() {
         let items = WheelCatalog.items(for: .tools, selection: [.input(.pdf), .input(.pdf)])
-        #expect(items.map(\.label) == ["COMPRESS", "METADATA", "MERGE"])
+        #expect(items.map(\.label) == ["COMPRESS", "METADATA", "TAGS", "PAGES", "MERGE"])
         #expect(items.last?.title == "Merge PDFs")
         #expect(items.last?.action == .tool(.mergePDFs))
     }

@@ -22,12 +22,20 @@ enum PDFTools {
         }
     }
 
-    /// Clears the document information: title, author, subject, keywords,
-    /// creator and dates.
+    /// Clears the document information, every XMP packet, which repeats much
+    /// of it, and the names of whoever annotated the pages.
     static func stripMetadata(_ input: URL, output: URL) throws(ConversionError) {
         let document = try open(input)
-        document.documentAttributes = [:]
+        clearAnnotationAuthors(in: document)
         guard document.write(to: output) else { throw .writeFailed("The PDF couldn’t be saved.") }
+        try PDFInfo.write([:], in: output)
+        try PDFXMP.removeAll(in: output)
+    }
+
+    static func clearAnnotationAuthors(in document: PDFDocument) {
+        for page in (0..<document.pageCount).compactMap(document.page(at:)) {
+            page.annotations.forEach { $0.userName = nil }
+        }
     }
 
     /// Appends every page of each PDF, in selection order.
@@ -47,9 +55,18 @@ enum PDFTools {
         guard merged.write(to: output) else { throw .writeFailed("The merged PDF couldn’t be saved.") }
     }
 
-    private static func open(_ input: URL) throws(ConversionError) -> PDFDocument {
+    static func open(_ input: URL) throws(ConversionError) -> PDFDocument {
         try PDFConverter.requireUnlocked(input)
-        guard let document = PDFDocument(url: input) else { throw .unreadableInput(input.lastPathComponent) }
+        guard PDFInfo.hasValidNames(input), let document = PDFDocument(url: input) else {
+            throw .unreadableInput(input.lastPathComponent)
+        }
         return document
+    }
+
+    /// True even for a PDF that opens without a password. PDFKit keeps the
+    /// encryption, and what is patched into the file it saves couldn't match
+    /// it, so these can't be organized or have their details changed.
+    static func isEncrypted(_ input: URL) -> Bool {
+        CGPDFDocument(input as CFURL)?.isEncrypted ?? false
     }
 }

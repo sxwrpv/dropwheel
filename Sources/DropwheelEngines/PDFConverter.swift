@@ -137,17 +137,19 @@ enum PDFPageRenderer {
         guard CGImageDestinationFinalize(destination) else { throw .writeFailed("The image encoder failed.") }
     }
 
-    /// Draws the page on white, honouring its /Rotate setting.
-    private static func render(_ page: CGPDFPage) throws(ConversionError) -> CGImage {
+    /// Draws the page on white, honouring its /Rotate setting plus any
+    /// clockwise `quarterTurns`.
+    static func render(_ page: CGPDFPage, maximumLongEdge limit: Double = maximumLongEdge,
+                       quarterTurns: Int = 0) throws(ConversionError) -> CGImage {
         let box = page.getBoxRect(.cropBox)
-        let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
+        let rotation = (((Int(page.rotationAngle) + quarterTurns * 90) % 360) + 360) % 360
         let isSideways = rotation == 90 || rotation == 270
         let displayWidth = isSideways ? box.height : box.width
         let displayHeight = isSideways ? box.width : box.height
         let longEdge = max(displayWidth, displayHeight)
         guard longEdge > 0 else { throw .unreadableInput("PDF page") }
 
-        let scale = min(dotsPerInch / pointsPerInch, maximumLongEdge / longEdge)
+        let scale = min(dotsPerInch / pointsPerInch, limit / longEdge)
         let width = Int((displayWidth * scale).rounded())
         let height = Int((displayHeight * scale).rounded())
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,

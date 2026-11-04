@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = makeStatusItem()
+        NSApp.mainMenu = makeEditMenuBar()
 
         wheel.onDrop = { [weak self] item, urls in
             self?.handleDrop(item, urls: urls)
@@ -38,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// launch, so drops can be tested without holding a key mid-drag.
     /// `DROPWHEEL_PREVIEW_FILES=/a.png:/b.heic` stands in for the dragged files,
     /// and `DROPWHEEL_PREVIEW_CONVERT=jpg` queues them as if dropped on that slice.
+    /// `DROPWHEEL_PREVIEW_SNAPSHOT=/folder` saves each window there as a PNG
+    /// after a moment, so layouts can be checked while the screen is locked.
     private func showPreviewWheelIfRequested() {
         let environment = ProcessInfo.processInfo.environment
         let files = (environment["DROPWHEEL_PREVIEW_FILES"] ?? "")
@@ -52,6 +55,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let raw = environment["DROPWHEEL_PREVIEW_CONVERT"], let format = FileFormat(rawValue: raw), !files.isEmpty {
             handleDrop(WheelItem.conversion(to: format), urls: files)
+        }
+        if let folder = environment["DROPWHEEL_PREVIEW_SNAPSHOT"] {
+            saveWindowPictures(to: URL(fileURLWithPath: folder))
+        }
+    }
+
+    private func saveWindowPictures(to folder: URL) {
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            for (index, window) in NSApp.windows.enumerated() {
+                guard let view = window.contentView, let picture = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                view.cacheDisplay(in: view.bounds, to: picture)
+                try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("window-\(index).png"))
+            }
         }
     }
     #endif
@@ -168,6 +185,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Dropwheel", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
+    }
+
+    /// The app shows no menu bar, but text fields still get their ⌘ keys
+    /// through one: without it they can't cut, copy, paste, select or undo.
+    private func makeEditMenuBar() -> NSMenu {
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let holder = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        holder.submenu = edit
+        let bar = NSMenu()
+        bar.addItem(holder)
+        return bar
     }
 
     private func makeTerminalMenuItem() -> NSMenuItem {

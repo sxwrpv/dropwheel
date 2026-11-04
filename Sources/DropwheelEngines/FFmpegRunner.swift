@@ -17,14 +17,26 @@ enum FFmpegRunner {
 
     /// Details of a media file. Throws if ffprobe is missing or can't read it.
     static func probe(_ url: URL) async throws(ConversionError) -> MediaInfo {
-        let ffprobe = try ToolLocator.require(.ffprobe)
-        let collector = LineCollector()
-        let arguments = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", url.path]
-        try await ProcessRunner.run(ffprobe, arguments: arguments) { collector.append($0) }
-        guard let info = MediaInfo.parse(ffprobeJSON: Data(collector.lines.joined(separator: "\n").utf8)) else {
+        guard let info = MediaInfo.parse(ffprobeJSON: try await probeOutput(url, sections: [])) else {
             throw .unreadableInput(url.lastPathComponent)
         }
         return info
+    }
+
+    /// The tags of a file, its tracks and its chapters.
+    static func probeMetadata(_ url: URL) async throws(ConversionError) -> MetadataReport {
+        guard let report = MetadataReport.parse(ffprobeJSON: try await probeOutput(url, sections: ["-show_chapters"])) else {
+            throw .unreadableInput(url.lastPathComponent)
+        }
+        return report
+    }
+
+    private static func probeOutput(_ url: URL, sections: [String]) async throws(ConversionError) -> Data {
+        let ffprobe = try ToolLocator.require(.ffprobe)
+        let collector = LineCollector()
+        let arguments = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams"] + sections + [url.path]
+        try await ProcessRunner.run(ffprobe, arguments: arguments) { collector.append($0) }
+        return Data(collector.lines.joined(separator: "\n").utf8)
     }
 
     /// Maps a 0...1 sub-task onto part of the overall progress.

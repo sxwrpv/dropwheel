@@ -5,6 +5,7 @@ public enum ExternalTool: String, CaseIterable, Sendable {
     case ffmpeg
     case ffprobe
     case cwebp
+    case webpmux
     case pandoc
     case soffice
 
@@ -12,7 +13,7 @@ public enum ExternalTool: String, CaseIterable, Sendable {
     public var installHint: String {
         switch self {
         case .ffmpeg, .ffprobe: "Install it with: brew install ffmpeg"
-        case .cwebp: "Install it with: brew install webp"
+        case .cwebp, .webpmux: "Install it with: brew install webp"
         case .pandoc: "Install it with: brew install pandoc"
         case .soffice: "Install LibreOffice with: brew install --cask libreoffice"
         }

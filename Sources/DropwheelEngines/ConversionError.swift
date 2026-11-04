@@ -24,6 +24,12 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
     case needsPicture(String)
     /// Audio too brief to make a video from.
     case tooShort(String)
+    /// Organize Pages with every page removed.
+    case noPagesLeft(String)
+    /// A field the file's format wouldn't take.
+    case metadataNotSaved(field: String, input: String)
+    /// A field the file's format wouldn't give up.
+    case metadataNotRemoved(field: String, input: String)
     case toolUnavailable(tool: String, input: String)
     case toolFailed(tool: String, message: String)
     case writeFailed(String)
@@ -53,6 +59,12 @@ public enum ConversionError: Error, Equatable, Sendable, LocalizedError {
             "Choose a picture to show with \(name)."
         case .tooShort(let name):
             "\(name) is too short to make a video from."
+        case .noPagesLeft(let name):
+            "Keep at least one page of \(name)."
+        case .metadataNotSaved(let field, let input):
+            "\(field) can’t be saved in a file like \(input), so no copy was made."
+        case .metadataNotRemoved(let field, let input):
+            "\(field) couldn’t be removed from \(input), so no copy was made."
         case .multiFrame(let name):
             "\(name) has several pages or frames. This tool works on single images only."
         case .nothingToSplit(let name):

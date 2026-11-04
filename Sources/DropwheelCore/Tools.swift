@@ -4,6 +4,7 @@ import Foundation
 public enum ToolKind: String, CaseIterable, Sendable {
     case compress
     case removeMetadata
+    case editMetadata
     case crop
     case editPhoto
     case annotate
@@ -18,6 +19,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
     case splitVideo
     case saveFrames
     case redactVideo
+    case organizePDF
     case createPDF
     case collage
     case mergePDFs
@@ -27,6 +29,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "Compress"
         case .removeMetadata: "Remove Metadata"
+        case .editMetadata: "Edit Metadata"
         case .crop: "Crop"
         case .editPhoto: "Edit Photo"
         case .annotate: "Annotate"
@@ -41,6 +44,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .splitVideo: "Split Video"
         case .saveFrames: "Save Frames"
         case .redactVideo: "Redact Video"
+        case .organizePDF: "Organize Pages"
         case .collage: "Collage"
         case .createPDF: "Create PDF"
         case .mergePDFs: "Merge PDFs"
@@ -53,6 +57,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "COMPRESS"
         case .removeMetadata: "METADATA"
+        case .editMetadata: "TAGS"
         case .crop: "CROP"
         case .editPhoto: "EDIT"
         case .annotate: "ANNOTATE"
@@ -67,6 +72,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .splitVideo: "SPLIT"
         case .saveFrames: "FRAMES"
         case .redactVideo: "REDACT"
+        case .organizePDF: "PAGES"
         case .collage: "COLLAGE"
         case .createPDF: "PDF"
         case .mergePDFs: "MERGE"
@@ -78,6 +84,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         switch self {
         case .compress: "arrow.down.right.and.arrow.up.left"
         case .removeMetadata: "tag.slash"
+        case .editMetadata: "tag"
         case .crop: "crop"
         case .editPhoto: "slider.horizontal.3"
         case .annotate: "pencil.tip.crop.circle"
@@ -92,6 +99,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
         case .splitVideo: "scissors"
         case .saveFrames: "photo.on.rectangle"
         case .redactVideo: "eye.slash.circle"
+        case .organizePDF: "rectangle.grid.2x2"
         case .collage: "square.grid.2x2"
         case .createPDF: "doc.badge.plus"
         case .mergePDFs: "doc.on.doc"
@@ -103,8 +111,8 @@ public enum ToolKind: String, CaseIterable, Sendable {
     public var needsOptions: Bool {
         switch self {
         case .compress, .normalizeVolume, .audioChannels, .changeSpeed, .splitVideo: true
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage, .bleep, .visualizer: false
+        case .removeMetadata, .editMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim, .editPhoto, .annotate,
+             .addBackground, .redactPhoto, .saveFrames, .redactVideo, .organizePDF, .collage, .bleep, .visualizer: false
         }
     }
 
@@ -112,7 +120,7 @@ public enum ToolKind: String, CaseIterable, Sendable {
     public var opensEditor: Bool {
         switch self {
         case .crop, .trim, .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage,
-             .bleep, .visualizer: true
+             .bleep, .visualizer, .organizePDF, .editMetadata: true
         default: false
         }
     }
@@ -152,11 +160,11 @@ public enum ToolCatalog {
     private static func singleFileTools(for format: FileFormat) -> Set<ToolKind> {
         switch format.family {
         case .image: compressibleImages.contains(format)
-            ? [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto] : []
-        case .pdf: [.compress, .removeMetadata]
-        case .audio: [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels, .bleep, .visualizer]
+            ? [.compress, .removeMetadata, .editMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto] : []
+        case .pdf: [.compress, .removeMetadata, .editMetadata, .organizePDF]
+        case .audio: [.compress, .removeMetadata, .editMetadata, .trim, .normalizeVolume, .audioChannels, .bleep, .visualizer]
         case .video: format == .gif ? []
-            : [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo, .saveFrames, .redactVideo]
+            : [.compress, .removeMetadata, .editMetadata, .crop, .trim, .changeSpeed, .splitVideo, .saveFrames, .redactVideo]
         default: []
         }
     }
@@ -257,6 +265,9 @@ public enum ToolOptions: Equatable, Sendable {
     case videoRedactions([RedactionRegion])
     case bleep(BleepRecipe)
     case visualizer(VisualizerRecipe)
+    /// The pages of an organized PDF, in their new order.
+    case pdfPages([PDFPageSlot])
+    case metadata(MetadataRecipe)
 
     public static let speedChoices: [Double] = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 4]
 
@@ -267,8 +278,8 @@ public enum ToolOptions: Equatable, Sendable {
         case .splitVideo: .split(.equalParts(2))
         case .audioChannels: .channels(.mono)
         case .normalizeVolume: .loudness(.podcast)
-        case .removeMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim,
-             .editPhoto, .annotate, .addBackground, .redactPhoto, .saveFrames, .redactVideo, .collage, .bleep, .visualizer: .none
+        case .removeMetadata, .editMetadata, .createPDF, .mergePDFs, .joinVideos, .crop, .trim, .editPhoto, .annotate,
+             .addBackground, .redactPhoto, .saveFrames, .redactVideo, .organizePDF, .collage, .bleep, .visualizer: .none
         }
     }
 }

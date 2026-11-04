@@ -6,37 +6,37 @@ import Testing
 struct ToolCatalogTests {
     @Test("A photo offers Compress and Remove Metadata")
     func singleImage() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg)]) == [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto])
+        #expect(ToolCatalog.tools(for: [.input(.jpg)]) == [.compress, .removeMetadata, .editMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto])
     }
 
     @Test("Several images can also become one PDF")
     func severalImages() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto, .createPDF, .collage])
+        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.png)]) == [.compress, .removeMetadata, .editMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto, .createPDF, .collage])
     }
 
     @Test("Several PDFs can be merged; one PDF cannot")
     func pdfs() {
-        #expect(ToolCatalog.tools(for: [.input(.pdf)]) == [.compress, .removeMetadata])
-        #expect(ToolCatalog.tools(for: [.input(.pdf), .input(.pdf)]) == [.compress, .removeMetadata, .mergePDFs])
+        #expect(ToolCatalog.tools(for: [.input(.pdf)]) == [.compress, .removeMetadata, .editMetadata, .organizePDF])
+        #expect(ToolCatalog.tools(for: [.input(.pdf), .input(.pdf)]) == [.compress, .removeMetadata, .editMetadata, .organizePDF, .mergePDFs])
     }
 
     @Test("Audio offers loudness and channel tools")
     func audio() {
-        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .trim, .normalizeVolume, .audioChannels,
+        #expect(ToolCatalog.tools(for: [.input(.wav)]) == [.compress, .removeMetadata, .editMetadata, .trim, .normalizeVolume, .audioChannels,
                                                                 .bleep, .visualizer])
     }
 
     @Test("Video offers speed and split; several clips can be joined")
     func video() {
-        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .crop, .trim, .changeSpeed, .splitVideo,
+        #expect(ToolCatalog.tools(for: [.input(.mov)]) == [.compress, .removeMetadata, .editMetadata, .crop, .trim, .changeSpeed, .splitVideo,
                                                                 .saveFrames, .redactVideo])
         #expect(ToolCatalog.tools(for: [.input(.mov), .input(.mp4)]).last == .joinVideos)
     }
 
     @Test("Mixed selections offer only the shared single-file tools")
     func mixed() {
-        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.mp3)]) == [.compress, .removeMetadata])
-        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.pdf)]) == [.compress, .removeMetadata])
+        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.mp3)]) == [.compress, .removeMetadata, .editMetadata])
+        #expect(ToolCatalog.tools(for: [.input(.jpg), .input(.pdf)]) == [.compress, .removeMetadata, .editMetadata])
     }
 
     @Test("Formats without tools, folders and unknown files offer nothing",
@@ -49,7 +49,7 @@ struct ToolCatalogTests {
     func capabilities() {
         let noAVIF = FormatCapabilities(canRead: { $0 != .avif }, canWrite: { $0 != .avif })
         #expect(ToolCatalog.tools(for: [.input(.avif)], capabilities: noAVIF).isEmpty)
-        #expect(ToolCatalog.tools(for: [.input(.jpg)], capabilities: noAVIF) == [.compress, .removeMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto])
+        #expect(ToolCatalog.tools(for: [.input(.jpg)], capabilities: noAVIF) == [.compress, .removeMetadata, .editMetadata, .crop, .editPhoto, .annotate, .addBackground, .redactPhoto])
     }
 
     @Test("Tools that need choices say so")

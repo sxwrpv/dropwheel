@@ -53,6 +53,10 @@ final class EditorWindows {
             content = AnyView(BleepEditorView(url: url, onSave: save, onCancel: cancel))
         case .visualizer:
             content = AnyView(VisualizerEditorView(url: url, onSave: save, onCancel: cancel))
+        case .organizePDF:
+            content = AnyView(OrganizePDFEditorView(url: url, onSave: save, onCancel: cancel))
+        case .editMetadata:
+            content = AnyView(MetadataEditorView(url: url, onSave: save, onCancel: cancel))
         default:
             return
         }
@@ -107,6 +111,18 @@ final class EditorWindows {
 /// the key window; the first click on a canvas should still draw or drag.
 private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// Something the user should know before saving.
+struct EditorNote: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 /// A small shared footer: what is being changed, plus Cancel and Save.
